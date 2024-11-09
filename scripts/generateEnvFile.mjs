@@ -116,6 +116,7 @@ async function createConfig() {
     DATABASE_AUTHENTICATOR,
     DATABASE_VISITOR,
     PORT,
+    ROOT_URL
   } = await prompts([
       {
         type: "text",
@@ -141,15 +142,11 @@ async function createConfig() {
         message: "backend server port:",
         initial: "3000",
       },
-  ]);
-  const {
-    ROOT_URL,
-  } = await prompts([
       {
         type: "text",
         name: "ROOT_URL",
         message: "public url:",
-        initial: (prompt) => `http://localhost:${PORT}`,
+        initial: () => `http://localhost:5173`,
       },
     ],
   );
@@ -158,6 +155,7 @@ async function createConfig() {
     name: "autoGenPasswords",
     type: "confirm",
     message: 'auto-generate passwords?',
+    initial: true,
   })
 
   if (autoGenPasswords) prompts.override(Object.assign({}, config, {

@@ -9,7 +9,6 @@ export default defineConfig({
   },
   root: './client',
   server: {
-    port: 3000,
     host: "localhost",
     proxy: {
       "/rpc": {
