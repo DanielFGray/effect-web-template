@@ -14,11 +14,7 @@ const Main = HttpRouter.Default.serve().pipe(
     }).pipe(Layer.provide(RpcSerialization.layerNdjson)),
   ),
   HttpServer.withLogAddress,
-  Layer.provide([
-    PgAuthDB.Live,
-    PgRootDB.Live,
-    Logger.minimumLogLevel(LogLevel.All),
-  ]),
+  Layer.provide([PgAuthDB.Live, PgRootDB.Live]),
 );
 
 Main.pipe(
@@ -26,6 +22,7 @@ Main.pipe(
     BunHttpServer.layerServer({
       port: 3000,
     }),
+    Logger.minimumLogLevel(LogLevel.All),
     // BunBundle.bundleClient({
     //   entrypoints: [IndexHtml],
     //   publicPath: `${BundlePath}/`,

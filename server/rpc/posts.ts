@@ -6,12 +6,12 @@ import { PgRootDB } from "../db.js";
 
 export class PostRpcs extends RpcGroup.make(
   Rpc.make("PostCreate", {
-    success: Post.select.pick("id"),
+    success: S.NullOr(Post.select.pick("id")),
     payload: Post.insert,
   }),
 
   Rpc.make("PostById", {
-    success: PostWithDetails,
+    success: S.NullOr(PostWithDetails),
     payload: Post.select.pick("id"),
   }),
 
@@ -39,21 +39,28 @@ export const PostService = Effect.gen(function* () {
     PostList: (opts: {
       username?: string;
       sort?: "stars" | "created_at" | "updated_at";
-    }) => repo.listBy(opts).pipe(Effect.fromNullable),
+    }) => repo.listBy(opts).pipe(Effect.orDie),
 
     PostById: ({ id }: { id: string }) =>
-      repo
-        .findById({ id })
-        .pipe(Effect.orDie, Effect.fromNullable, Effect.andThen(Effect.head)),
+      repo.findById({ id }).pipe(
+        Effect.head,
+        Effect.catchTag("NoSuchElementException", () => Effect.succeed(null)),
+        Effect.orDie,
+      ),
 
     PostCreate: (values: {
       body: string;
       privacy?: typeof Post.fields.privacy.Type;
     }) =>
-      repo
-        .insert(values)
-        .pipe(Effect.orDie, Effect.fromNullable, Effect.andThen(Effect.head)),
+      repo.insert(values).pipe(
+        Effect.head,
+        Effect.catchTag("NoSuchElementException", () => Effect.succeed(null)),
+        Effect.orDie,
+      ),
   };
-}).pipe(Effect.provide([PgRootDB.Live, PostsRepo.Default]));
+}).pipe(
+  Effect.provide([PgRootDB.Live, PostsRepo.Default]),
+  Effect.catchAll((e) => Effect.fail("Error")),
+);
 
 export const PostsLive = PostRpcs.toLayer(PostService);

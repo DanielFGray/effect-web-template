@@ -15,16 +15,14 @@ export class Post extends Model.Class<Post>("Post")({
   updated_at: Model.Generated(S.Date),
 }) {}
 
-export const PostUser = S.Struct({
-  avatar_url: S.NullOr(S.String),
-  username: S.String,
-});
-
 export const PostWithDetails = S.Struct({
-  ...Post.fields,
-  stars: S.String,
-  user: PostUser,
-});
+  ...Post.select.fields,
+  stars: S.Union(S.BigInt, S.Number, S.String),
+  user: S.Struct({
+    avatar_url: S.NullOr(S.String),
+    username: S.String,
+  }),
+}).pipe(S.omit("user_id"));
 
 export class PostsRepo extends Effect.Service<PostsRepo>()("Posts/PostRepo", {
   effect: Effect.gen(function* () {
@@ -46,7 +44,7 @@ export class PostsRepo extends Effect.Service<PostsRepo>()("Posts/PostRepo", {
         "p.privacy",
         "p.created_at",
         "p.updated_at",
-        "stars",
+        "get_stars.stars",
         eb
           .fn<{
             avatar_url: string;
@@ -71,14 +69,15 @@ export class PostsRepo extends Effect.Service<PostsRepo>()("Posts/PostRepo", {
       listBy: (opts: {
         username?: string;
         sort?: "stars" | "created_at" | "updated_at";
-      }) => {
-        let query = baseQuery
-          .orderBy(sql.lit(opts.sort ?? "created_at"), "desc")
-          .limit((eb) => eb.lit(50));
-        if (opts.username)
-          query = query.where("u.username", "=", opts.username);
-        return query;
-      },
+      }) =>
+        Effect.gen(function* () {
+          let query = baseQuery
+            .orderBy(sql.lit(opts.sort ?? "created_at"), "desc")
+            .limit((eb) => eb.lit(50));
+          if (opts.username)
+            query = query.where("u.username", "=", opts.username);
+          return yield* query;
+        }),
     };
   }),
 }) {

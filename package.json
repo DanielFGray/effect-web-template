@@ -21,7 +21,7 @@
     "db:init": "run-s db:up db:setup db:reset db:latest",
     "env:init": "bun ./scripts/generateEnvFile.mjs",
     "init": "NOCONFIRM=1 run-s env:init db:init",
-    "tsc:watch": "tsc --watch",
+    "tsc:watch": "tsc --watch --noEmit --preserveWatchOutput",
     "server:watch_": "run-p 'server:build --watch' server:exec:watch",
     "server:watch": "bun -b --watch --watch-preserve-output server/index.ts",
     "server:exec": "bun dist/server.js",
