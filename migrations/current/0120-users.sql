@@ -26,7 +26,8 @@ create table app_public.users (
 );
 
 alter table app_public.users enable row level security;
-create index users_username_idx on app_public.users (username);
+create index on app_public.users (username);
+create index on app_public.users (role);
 
 alter table app_private.sessions
   add constraint sessions_user_id_fkey

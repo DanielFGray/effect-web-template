@@ -1,27 +1,37 @@
-import http from "node:http";
-import { Config, Effect, Layer, Logger, LogLevel } from "effect";
+import { Layer, Logger, LogLevel } from "effect";
 import { HttpRouter, HttpServer } from "@effect/platform";
-import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
-import { DevTools } from "@effect/experimental"
-import { toHttpApp } from "@effect/rpc-http/HttpRpcRouter";
-import { PgClient } from "@effect/sql-pg";
-import { appRouter } from "./router";
-import { PgRootLive } from "./db";
+import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
+import { RpcSerialization, RpcServer } from "@effect/rpc";
+import { PgAuthDB, PgRootDB } from "./db.js";
+import { PostRpcs, PostsLive } from "./rpc/posts.js";
 
-const HttpLive = HttpRouter.empty.pipe(
-  HttpRouter.post("/rpc", toHttpApp(appRouter, { spanPrefix: 'rpc' })),
-  HttpServer.serve(),
+const Main = HttpRouter.Default.serve().pipe(
+  Layer.provide(RpcServer.layer(PostRpcs)),
+  Layer.provide(PostsLive),
+  Layer.provide(
+    RpcServer.layerProtocolHttp({
+      path: "/rpc",
+    }).pipe(Layer.provide(RpcSerialization.layerNdjson)),
+  ),
   HttpServer.withLogAddress,
-  Layer.provide(PgRootLive),
-  Layer.provide(PgClient.layer({ url: Config.redacted("DATABASE_URL") })),
-  Layer.provide(NodeHttpServer.layerConfig(http.createServer, { port: Config.number("PORT") })),
+  Layer.provide([
+    PgAuthDB.Live,
+    PgRootDB.Live,
+    Logger.minimumLogLevel(LogLevel.All),
+  ]),
 );
 
-HttpLive.pipe(
-  Layer.launch, 
-  // FIXME: conditionally enable devtools
-  // Effect.provide(DevTools.layerWebSocket().pipe(Layer.provide(NodeSocket.layerWebSocketConstructor))),
-  Effect.provide(Logger.pretty),
-  Logger.withMinimumLogLevel(LogLevel.All),
-  NodeRuntime.runMain
+Main.pipe(
+  Layer.provide([
+    BunHttpServer.layerServer({
+      port: 3000,
+    }),
+    // BunBundle.bundleClient({
+    //   entrypoints: [IndexHtml],
+    //   publicPath: `${BundlePath}/`,
+    // }).devLayer,
+    // TanstackRouter.layer(),
+  ]),
+  Layer.launch,
+  BunRuntime.runMain,
 );
