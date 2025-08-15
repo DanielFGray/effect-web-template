@@ -1,38 +1,44 @@
-// client/index.ts
-import { FetchHttpClient, HttpApiClient } from "@effect/platform";
-import { Console, Effect, Layer, Logger, LogLevel } from "effect";
-import { PostsApi } from "../server/api/posts.js";
-import { assert } from "effect/Console";
+import { h, render, useState, useEffect, useRef } from "./didact.js";
 
-// Create HttpApi client layer
-const ClientLive = HttpApiClient.make(PostsApi, {
-  baseUrl: "http://localhost:8080", // Changed from 3000 to match your server port
-}).pipe(Effect.provide(FetchHttpClient.layer));
+function useInterval(delay: number, callback: () => void) {
+  const savedCallback = useRef<null | (() => void)>(null);
 
-// Use the client
-const program = Effect.gen(function* () {
-  const client = yield* ClientLive;
+  // Remember the latest callback.
+  useEffect(() => {
+    savedCallback.current = callback;
+  }, [callback]);
 
-  yield* Console.log("Creating post");
+  // Set up the interval.
+  useEffect(() => {
+    function tick() {
+      savedCallback.current?.();
+    }
+    if (delay !== null) {
+      let id = setInterval(tick, delay);
+      return () => clearInterval(id);
+    }
+  }, [delay]);
+}
 
-  const newPost = yield* client.posts.create({
-    payload: {
-      body: "hello world",
-      privacy: "public",
-    },
-  });
+const inc = (count: number) => count + 1;
+const dec = (count: number) => (count > 0 ? count - 1 : 0);
 
-  const newList = yield* client.posts.list({
-    urlParams: { sort: "created_at" },
-  });
-  const foundPost = newList.find((post) => newPost?.id === post.id);
-  yield* assert(foundPost !== undefined, "New post should be in the new list");
-  yield* Console.log("New post created:", foundPost);
-});
+function Counter() {
+  const [count, setCount] = useState(1);
 
-program.pipe(
-  Effect.orDie,
-  Effect.scoped,
-  Effect.provide(Logger.minimumLogLevel(LogLevel.All)),
-  Effect.runPromise,
-);
+  useInterval(500, () => setCount(dec));
+
+  return h("div", {}, [
+    h("nav", { "data-cy": "nav" }, [
+      h("ul", {}, [
+        h("li", {}, [h("a", { href: "/" }, ["Home"])]),
+        h("li", {}, [h("a", { href: "/login" }, ["login"])]),
+        h("li", {}, [h("a", { href: "/register" }, ["register"])]),
+      ]),
+    ]),
+    h("button", { onClick: () => setCount(inc) }, [`Count: ${count}`]),
+  ]);
+}
+
+const container = document.getElementById("root");
+if (container) render(h(Counter), container);
