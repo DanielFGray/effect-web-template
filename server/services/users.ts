@@ -1,7 +1,5 @@
 import { Model } from "@effect/sql";
-import { Effect, Schema as S } from "effect";
-import type { Selectable } from "kysely";
-import type { AppPublicUserEmails } from "kysely-codegen";
+import { Effect, Schema as S, Data } from "effect";
 import { PgRootDB, sql } from "../db.js";
 
 export class User extends Model.Class<User>("User")({
@@ -18,7 +16,48 @@ export class User extends Model.Class<User>("User")({
 
 type SelectableUser = typeof User.select.Type;
 
-export class UsersRepo extends Effect.Service<UsersRepo>()("Auth/Accounts", {
+// Authentication and account security errors
+export class AccountLockedError extends Data.TaggedError("AccountLocked")<{
+  readonly message: string;
+  readonly lockType: "login_attempts" | "password_reset";
+}> {}
+
+export class WeakPasswordError extends Data.TaggedError("WeakPassword")<{
+  readonly message: string;
+  readonly requirements?: string[];
+}> {}
+
+export class AuthenticationRequiredError extends Data.TaggedError(
+  "AuthenticationRequired",
+)<{
+  readonly message: string;
+  readonly action: string;
+}> {}
+
+export class InvalidCredentialsError extends Data.TaggedError(
+  "InvalidCredentials",
+)<{
+  readonly message: string;
+}> {}
+
+export class MissingDataError extends Data.TaggedError("MissingData")<{
+  readonly message: string;
+  readonly field: "email" | "password" | "username";
+}> {}
+
+export class AccountAlreadyLinkedError extends Data.TaggedError(
+  "AccountAlreadyLinked",
+)<{
+  readonly message: string;
+  readonly service: string;
+}> {}
+
+export class AccessDeniedError extends Data.TaggedError("AccessDenied")<{
+  readonly message: string;
+  readonly reason: "invalid_token" | "expired_token" | "wrong_account";
+}> {}
+
+export class UsersRepo extends Effect.Service<UsersRepo>()("User/Accounts", {
   effect: Effect.gen(function* () {
     const db = yield* PgRootDB;
 
@@ -33,7 +72,29 @@ export class UsersRepo extends Effect.Service<UsersRepo>()("Auth/Accounts", {
               .as("u"),
           )
           .selectAll()
-          .where((eb) => eb.not(eb(eb.ref("u"), "is", null))),
+          // @ts-expect-error: Kysely doesn't seem to allow referencing tables directly
+          .where((eb) => eb.not(eb(eb.ref("u"), "is", null)))
+          .pipe(
+            Effect.mapError((error) => {
+              if (
+                error._tag === "SqlError" &&
+                "code" in error &&
+                error.code === "LOCKD"
+              ) {
+                return new AccountLockedError({
+                  message:
+                    "User account locked - too many login attempts. Try again after 5 minutes.",
+                  lockType: "login_attempts",
+                });
+              }
+              return error;
+            }),
+          ),
+
+      logout: () =>
+        db.selectNoFrom((eb) => [
+          eb.fn<void>("app_public.logout", []).as("result"),
+        ]),
 
       register: ({
         username,
@@ -47,17 +108,51 @@ export class UsersRepo extends Effect.Service<UsersRepo>()("Auth/Accounts", {
         db
           .selectFrom(
             sql<typeof User.Type>`
-            app_private.really_create_user(
-              username => ${username}::citext,
-              email => ${email || null},
-              email_is_verified => false,
-              name => null,
-              avatar_url => null,
-              password => ${password}::text
-            )`.as("u"),
+          app_private.really_create_user(
+            username => ${username}::citext,
+            email => ${email || null},
+            email_is_verified => false,
+            name => null,
+            avatar_url => null,
+            password => ${password}::text
+          )`.as("u"),
           )
           .selectAll()
-          .where((eb) => eb.not(eb(eb.ref("u"), "is", null))),
+          // @ts-expect-error: Kysely doesn't seem to allow referencing tables directly
+          .where((eb) => eb.not(eb(eb.ref("u"), "is", null)))
+          .pipe(
+            Effect.mapError((error) => {
+              if (error._tag === "SqlError" && "code" in error) {
+                switch (error.code) {
+                  case "MODAT":
+                    return new MissingDataError({
+                      message: "Email is required",
+                      field: "email",
+                    });
+
+                  case "MODAT":
+                    return new MissingDataError({
+                      message: "Password is required",
+                      field: "password",
+                    });
+
+                  case "WEAKP":
+                    return new WeakPasswordError({
+                      message: "Password is too weak",
+                      requirements: ["At least 8 characters"],
+                    });
+
+                  case "TAKEN":
+                    return new AccountAlreadyLinkedError({
+                      message:
+                        "A different user already has this account linked",
+                      service: "oauth",
+                    });
+                }
+              }
+              return error;
+            }),
+          ),
 
       updateProfile: ({
         userId,
@@ -85,23 +180,48 @@ export class UsersRepo extends Effect.Service<UsersRepo>()("Auth/Accounts", {
         oldPassword: string;
         newPassword: string;
       }) =>
-        db.selectNoFrom((eb) => [
-          eb
-            .fn<{
-              change_password: boolean | null;
-            }>("app_public.change_password", [
-              eb.val(oldPassword),
-              eb.val(newPassword),
-            ])
-            .as("result"),
-        ]),
+        db
+          .selectNoFrom((eb) => [
+            eb
+              .fn<{
+                change_password: boolean | null;
+              }>("app_public.change_password", [
+                eb.val(oldPassword),
+                eb.val(newPassword),
+              ])
+              .as("result"),
+          ])
+          .pipe(
+            Effect.mapError((error) => {
+              if (error._tag === "SqlError" && "code" in error) {
+                switch (error.code) {
+                  case "LOGIN":
+                    return new AuthenticationRequiredError({
+                      message: "You must log in to change your password",
+                      action: "change_password",
+                    });
+
+                  case "CREDS": {
+                    return new InvalidCredentialsError({
+                      message: "Incorrect password",
+                    });
+                  }
+                  case "WEAKP": {
+                    return new WeakPasswordError({
+                      message: "Password is too weak",
+                      requirements: ["At least 8 characters"],
+                    });
+                  }
+                }
+              }
+              return error;
+            }),
+          ),
 
       forgotPassword: ({ email }: { email: string }) =>
         db.selectNoFrom((eb) => [
           eb
-            .fn<{
-              forgot_password: unknown | null;
-            }>("app_public.forgot_password", [eb.val(email)])
+            .fn<void>("app_public.forgot_password", [eb.val(email)])
             .as("result"),
         ]),
 
@@ -119,7 +239,7 @@ export class UsersRepo extends Effect.Service<UsersRepo>()("Auth/Accounts", {
             .fn<{
               reset_password: boolean | null;
             }>("app_private.reset_password", [
-              eb.val(userId),
+              sql`${userId}::uuid`,
               eb.val(token),
               eb.val(password),
             ])
@@ -140,88 +260,21 @@ export class UsersRepo extends Effect.Service<UsersRepo>()("Auth/Accounts", {
         tokens: Record<string, unknown>;
       }) =>
         db
-          .with("create_user", (eb) =>
+          .selectFrom((eb) =>
             eb
-              .selectFrom((eb) =>
-                eb
-                  .fn<SelectableUser>("app_private.link_or_register_user", [
-                    sql`f_user_id => ${userId ?? null}`,
-                    sql`f_service => ${serviceData}`,
-                    sql`f_identifier => ${username}`,
-                    sql`f_profile => ${JSON.stringify(profile)}`,
-                    sql`f_auth_details => ${JSON.stringify(tokens)}`,
-                  ])
-                  .as("u"),
-              )
-              .selectAll(),
-          )
-          .with("create_session", (eb) =>
-            eb
-              .insertInto("app_private.sessions")
-              .expression((eb) => eb.selectFrom("create_user").select(["id"]))
-              .returning((eb) => [eb.ref("uuid"), eb.ref("user_id")]),
-          )
-          .selectNoFrom((eb) => [
-            eb
-              .fn<{
-                user_id: string;
-                session_id: string;
-              }>("json_build_object", [
-                sql.lit("user_id"),
-                eb.selectFrom("create_user").select(["user_id"]),
-                sql.lit("session_id"),
-                eb.selectFrom("create_session").select(["uuid"]),
+              .fn<SelectableUser>("app_private.link_or_register_user", [
+                sql`f_user_id => ${userId ?? null}`,
+                sql`f_service => ${serviceData}`,
+                sql`f_identifier => ${username}`,
+                sql`f_profile => ${JSON.stringify(profile)}`,
+                sql`f_auth_details => ${JSON.stringify(tokens)}`,
               ])
-              .as("result"),
-          ]),
+              .as("u"),
+          )
+          .selectAll(),
 
       oauthUnlink: ({ id }: { id: string }) =>
         db.deleteFrom("app_public.user_authentications").where("id", "=", id),
-
-      addEmail: ({ email }: { email: string }) =>
-        db
-          .insertInto("app_public.user_emails")
-          .values({ email })
-          .returningAll(),
-
-      removeEmail: ({ emailId }: { emailId: string }) =>
-        db
-          .deleteFrom("app_public.user_emails")
-          .where("id", "=", emailId)
-          .returningAll(),
-
-      verifyEmail: ({ emailId, token }: { emailId: string; token: string }) =>
-        db
-          .selectFrom((eb) =>
-            eb
-              .fn<{
-                verify_email: boolean | null;
-              }>("app_public.verify_email", [eb.val(emailId), eb.val(token)])
-              .as("verify_email"),
-          )
-          .selectAll(),
-
-      makeEmailPrimary: ({ emailId }: { emailId: string }) =>
-        db
-          .selectFrom((eb) =>
-            eb
-              .fn<
-                Selectable<AppPublicUserEmails>
-              >("app_public.make_email_primary", [eb.val(emailId)])
-              .as("result"),
-          )
-          .selectAll(),
-
-      resendVerificationEmail: ({ emailId }: { emailId: string }) =>
-        db
-          .selectNoFrom((eb) => [
-            eb
-              .fn<{
-                resend_email_verification_code: boolean;
-              }>("app_public.resend_email_verification_code", [eb.val(emailId)])
-              .as("result"),
-          ])
-          .selectAll(),
 
       requestAccountDeletion: () =>
         db
@@ -248,4 +301,5 @@ export class UsersRepo extends Effect.Service<UsersRepo>()("Auth/Accounts", {
   }),
 }) {
   // static Test = makeTestLayer(UsersRepo)({});
+  static Live = UsersRepo.Default;
 }

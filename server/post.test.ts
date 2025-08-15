@@ -9,17 +9,22 @@ const TestDbLive = PgRootDB.Kysely.pipe(
 );
 
 suite("posts", () => {
-  it.live("can make a new post", () =>
-    Effect.gen(function* () {
-      const repo = yield* PostService;
-      const create = yield* repo.PostCreate({ body: "hello world" });
-      expect(create).toBeTypeOf("object");
-      expect(create).toHaveProperty("id");
+  it.live(
+    "can make a new post and fetch after creation",
+    () =>
+      Effect.gen(function* () {
+        const repo = yield* PostService;
+        const create = yield* repo.PostCreate({ body: "hello world" });
 
-      const result = yield* repo.PostById({ id: create.id });
-      expect(result).toBeInstanceOf(Object);
-      expect(result).toHaveProperty("id", create.id);
-      expect(result).toHaveProperty("body", "hello world");
-    }).pipe(Effect.provide(TestDbLive)),
+        expect(create).toBeTypeOf("object");
+        expect(create).toHaveProperty("id");
+
+        if (!create) throw new Error("Post creation failed");
+        const result = yield* repo.PostById({ id: create?.id });
+        expect(create).toBeTypeOf("object");
+        expect(result).toHaveProperty("id", create?.id);
+        expect(result).toHaveProperty("body", "hello world");
+      }).pipe(Effect.provide(TestDbLive)),
+    { timeout: 20000, retry: 0 },
   );
 });

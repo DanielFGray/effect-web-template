@@ -18,19 +18,34 @@ create index on app_public.posts (created_at desc);
 alter table app_public.posts
   enable row level security;
 
-create policy select_all on app_public.posts
-  for select using (privacy = 'public' or user_id = app_public.current_user_id());
-create policy insert_own on app_public.posts
-  for insert with check (user_id = app_public.current_user_id());
-create policy update_own on app_public.posts
-  for update using (user_id = app_public.current_user_id());
-create policy delete_own on app_public.posts
-  for delete using (user_id = app_public.current_user_id());
+create policy "select public or own or if admin" on app_public.posts
+  for select using (
+    privacy = 'public'
+    or user_id = app_public.current_user_id()
+    or exists (
+      select 1
+      from app_public.users
+      where id = app_public.current_user_id()
+        and role = 'admin'
+    )
+  );
 
-create policy delete_posts_as_admin on app_public.posts
-  for delete using (exists (
-    select 1 from app_public.users where id = app_public.current_user_id() and role = 'admin'
-  ));
+create policy "insert own" on app_public.posts
+  for insert with check (user_id = app_public.current_user_id());
+
+create policy "update own" on app_public.posts
+  for update using (user_id = app_public.current_user_id());
+
+create policy "delete own or if admin" on app_public.posts
+  for delete using (
+    user_id = app_public.current_user_id()
+    or exists (
+      select 1
+      from app_public.users
+      where id = app_public.current_user_id()
+        and role = 'admin'
+    )
+);
 
 grant
   select,

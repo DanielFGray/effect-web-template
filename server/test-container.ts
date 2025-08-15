@@ -1,4 +1,12 @@
-import { Console, Context, Effect, Layer, Redacted } from "effect";
+import {
+  Console,
+  Context,
+  Effect,
+  Layer,
+  Redacted,
+  Stream,
+  String,
+} from "effect";
 import { NodeContext } from "@effect/platform-node";
 import { Command } from "@effect/platform";
 import * as Pg from "@effect/sql-pg";
@@ -6,6 +14,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
+import { pgConfig } from "./db.js";
 
 export class PgContainer extends Context.Tag("test/PgContainer")<
   PgContainer,
@@ -25,6 +34,7 @@ export class PgContainer extends Context.Tag("test/PgContainer")<
     Effect.gen(function* () {
       const container = yield* PgContainer;
       return Pg.PgClient.layer({
+        ...pgConfig,
         url: Redacted.make(container.getConnectionUri()),
       });
     }),
@@ -35,14 +45,15 @@ export class PgContainer extends Context.Tag("test/PgContainer")<
       const container = yield* PgContainer;
       const connectionUri = container.getConnectionUri();
 
+      yield* Console.log(`Started PostgreSQL container at ${connectionUri}`);
       const env = {
-        ROOT_DATABASE_URL: connectionUri,
-        DATABASE_URL: connectionUri.replace(/\/test$/, "/test_db"),
+        ROOT_DATABASE_URL: connectionUri.replace(/test$/, "template1"),
+        DATABASE_URL: connectionUri,
         SHADOW_DATABASE_URL: connectionUri.replace(
           /\/test$/,
           "/test_db_shadow",
         ),
-        DATABASE_NAME: "test_db",
+        DATABASE_NAME: "test",
         DATABASE_OWNER: "test_owner",
         DATABASE_OWNER_PASSWORD: "test_pass",
         DATABASE_AUTHENTICATOR: "test_auth",
@@ -51,27 +62,35 @@ export class PgContainer extends Context.Tag("test/PgContainer")<
         NOCONFIRM: "true",
       };
 
-      yield* Command.make("bun", "scripts/dbSetup.mjs").pipe(
-        Command.env(env),
-        Command.runInShell(true),
-        Command.exitCode,
-      );
-      // yield* Console.log(`Database setup exit code: ${setup}`);
+      const scripts = [
+        {
+          name: "dbSetup",
+          args: ["scripts/dbSetup.mjs"],
+        },
+        {
+          name: "reset",
+          args: ["run", "gm", "reset", "--erase"],
+        },
+        {
+          name: "migrate",
+          args: ["run", "gm", "watch", "--once"],
+        },
+      ] as const;
 
-      // Run migrations reset
-      yield* Command.make("bun", "run", "gm", "reset", "--erase").pipe(
-        Command.env(env),
-        Command.exitCode,
-        // Command.string,
-      );
-      // yield* Console.log(`Migration reset output: ${resetOutput}`);
-
-      yield* Command.make("bun", "run", "gm", "watch", "--once").pipe(
-        Command.env(env),
-        Command.exitCode,
-        // Command.string
-      );
-      // yield* Console.log(`Migration migrate output: ${migrateOutput}`);
+      for (const script of scripts) {
+        yield* Console.log(`Running ${script.name} script`);
+        const exitCode = yield* Command.make("bun", ...script.args).pipe(
+          Command.env(env),
+          Command.runInShell(true),
+          Command.stdout("inherit"),
+          Command.exitCode,
+        );
+        if (exitCode !== 0) {
+          return yield* Effect.fail(
+            `${script.name} script failed with exit code ${exitCode}`,
+          );
+        }
+      }
 
       return Pg.PgClient.layer({
         url: Redacted.make(env.DATABASE_URL),

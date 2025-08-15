@@ -18,7 +18,6 @@
 
 ## Code Style & Conventions
 
-- **Imports**: Use path mapping (`#server/*`, `#lib/*`, `#client/*`) and `.js` extensions
 - **Effect patterns**: Use `Effect.gen` for async operations, pipe for composition
 - **Types**: Strict TypeScript with Effect Schema for validation
 - **Services**: Use `Effect.Service` pattern for dependency injection
@@ -27,3 +26,7 @@
 - **Naming**: camelCase for variables/functions, PascalCase for classes/types
 - **Error handling**: Use Effect's error handling, avoid try/catch
 - **Database**: Use Kysely with Effect SQL, migrations via graphile-migrate
+
+Remember to consult effect docs where necessary to understand effect APIs.
+
+READ AUTH_IMPLEMENTATION.md for info about authentication

@@ -1,34 +1,37 @@
-import { Layer, Logger, LogLevel } from "effect";
-import { HttpRouter, HttpServer } from "@effect/platform";
-import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
-import { RpcSerialization, RpcServer } from "@effect/rpc";
+import { Config, Effect, Layer, Logger, LogLevel } from "effect";
+import { HttpApiBuilder, HttpServer, Path, Etag } from "@effect/platform";
+import {
+  BunHttpServer,
+  BunRuntime,
+  BunFileSystem,
+  BunHttpPlatform,
+} from "@effect/platform-bun";
 import { PgAuthDB, PgRootDB } from "./db.js";
-import { PostRpcs, PostsLive } from "./rpc/posts.js";
+import { PostsApiLive } from "./api/posts.js";
+import { UsersApiLive } from "./api/users.js";
+import { EmailApiLive } from "./api/email.js";
+import { SessionService } from "./services/session.js";
 
-const Main = HttpRouter.Default.serve().pipe(
-  Layer.provide(RpcServer.layer(PostRpcs)),
-  Layer.provide(PostsLive),
-  Layer.provide(
-    RpcServer.layerProtocolHttp({
-      path: "/rpc",
-    }).pipe(Layer.provide(RpcSerialization.layerNdjson)),
-  ),
+const ServerLive = HttpApiBuilder.serve().pipe(
+  Layer.provide([PostsApiLive, UsersApiLive, EmailApiLive]),
+  Layer.provide(SessionService.Default),
+  Layer.provide(PgRootDB.Live),
+  Layer.provide(PgAuthDB.Live),
   HttpServer.withLogAddress,
-  Layer.provide([PgAuthDB.Live, PgRootDB.Live]),
+  Layer.provide(
+    Layer.unwrapEffect(
+      Effect.andThen(Config.string("PORT"), (port) =>
+        BunHttpServer.layerServer({ port }),
+      ),
+    ),
+  ),
+  Layer.provide(Logger.minimumLogLevel(LogLevel.All)),
+  Layer.provide([
+    BunFileSystem.layer,
+    BunHttpPlatform.layer,
+    Path.layer,
+    Etag.layer,
+  ]),
 );
 
-Main.pipe(
-  Layer.provide([
-    BunHttpServer.layerServer({
-      port: 3000,
-    }),
-    Logger.minimumLogLevel(LogLevel.All),
-    // BunBundle.bundleClient({
-    //   entrypoints: [IndexHtml],
-    //   publicPath: `${BundlePath}/`,
-    // }).devLayer,
-    // TanstackRouter.layer(),
-  ]),
-  Layer.launch,
-  BunRuntime.runMain,
-);
+BunRuntime.runMain(Layer.launch(ServerLive));

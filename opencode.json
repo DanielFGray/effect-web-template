@@ -5,6 +5,16 @@
       "type": "local",
       "command": ["bunx", "effect-mcp@latest"],
       "enabled": true
+    },
+    "postgres": {
+      "type": "local",
+      "command": [
+        "bunx",
+        "@henkey/postgres-mcp-server",
+        "-cs",
+        "postgresql://effect_test:KRmVk4jystaS1N9Oe4l8yOYD@localhost:5432/effect_test"
+      ],
+      "enabled": true
     }
   }
 }

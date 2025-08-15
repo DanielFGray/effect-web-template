@@ -47,7 +47,7 @@ async function createConfig() {
     .replace(/__+/g, "")
     .replace(/^_/, "");
 
-  const config = await readDotenv()
+  const config = await readDotenv();
   if (
     config &&
     config.AUTH_DATABASE_URL &&
@@ -65,7 +65,7 @@ async function createConfig() {
     config.ROOT_DATABASE_PASSWORD &&
     config.ROOT_DATABASE_URL &&
     config.ROOT_DATABASE_USER &&
-    config.ROOT_URL &&
+    config.VITE_ROOT_URL &&
     config.SECRET &&
     config.SHADOW_DATABASE_PASSWORD &&
     config.SHADOW_DATABASE_URL &&
@@ -76,14 +76,9 @@ async function createConfig() {
     process.exit(0);
   }
 
-  prompts.override(config)
-  const {
-    ROOT_DATABASE_USER,
-    DATABASE_HOST,
-    DATABASE_PORT,
-    DATABASE_NAME,
-  } = await prompts(
-    [
+  prompts.override(config);
+  const { ROOT_DATABASE_USER, DATABASE_HOST, DATABASE_PORT, DATABASE_NAME } =
+    await prompts([
       {
         type: "text",
         name: "ROOT_DATABASE_USER",
@@ -109,103 +104,102 @@ async function createConfig() {
         initial: packageName,
         validate: validName,
       },
-    ]
-  )
+    ]);
   const {
     DATABASE_OWNER,
     DATABASE_AUTHENTICATOR,
     DATABASE_VISITOR,
     PORT,
-    ROOT_URL
+    VITE_ROOT_URL,
   } = await prompts([
-      {
-        type: "text",
-        name: "DATABASE_OWNER",
-        message: "database username:",
-        initial: () => DATABASE_NAME,
-      },
-      {
-        type: "text",
-        name: "DATABASE_AUTHENTICATOR",
-        message: "authenticator role name:",
-        initial: () => `${DATABASE_NAME}_authenticator`,
-      },
-      {
-        type: "text",
-        name: "DATABASE_VISITOR",
-        message: "visitor role name:",
-        initial: () => `${DATABASE_NAME}_visitor`,
-      },
-      {
-        type: "text",
-        name: "PORT",
-        message: "backend server port:",
-        initial: "3000",
-      },
-      {
-        type: "text",
-        name: "ROOT_URL",
-        message: "public url:",
-        initial: () => `http://localhost:5173`,
-      },
-    ],
-  );
+    {
+      type: "text",
+      name: "DATABASE_OWNER",
+      message: "database username:",
+      initial: () => DATABASE_NAME,
+    },
+    {
+      type: "text",
+      name: "DATABASE_AUTHENTICATOR",
+      message: "authenticator role name:",
+      initial: () => `${DATABASE_NAME}_authenticator`,
+    },
+    {
+      type: "text",
+      name: "DATABASE_VISITOR",
+      message: "visitor role name:",
+      initial: () => `${DATABASE_NAME}_visitor`,
+    },
+    {
+      type: "text",
+      name: "PORT",
+      message: "backend server port:",
+      initial: "3000",
+    },
+    {
+      type: "text",
+      name: "VITE_ROOT_URL",
+      message: "public url:",
+      initial: () => `http://localhost:5173`,
+    },
+  ]);
 
   const { autoGenPasswords } = await prompts({
     name: "autoGenPasswords",
     type: "confirm",
-    message: 'auto-generate passwords?',
+    message: "auto-generate passwords?",
     initial: true,
-  })
+  });
 
-  if (autoGenPasswords) prompts.override(Object.assign({}, config, {
-    ROOT_DATABASE_PASSWORD: generatePassword(18),
-    DATABASE_OWNER_PASSWORD: generatePassword(18),
-    DATABASE_AUTHENTICATOR_PASSWORD: generatePassword(18),
-    SHADOW_DATABASE_PASSWORD: generatePassword(18),
-    TEST_DATABASE_PASSWORD: generatePassword(18),
-    SECRET: generatePassword(32),
-  }))
-  const PASSWORDS = await prompts(
-    [
-      {
-        type: "text",
-        name: "ROOT_DATABASE_PASSWORD",
-        message: "ROOT_DATABASE_PASSWORD",
-        initial: () => generatePassword(18),
-      },
-      {
-        type: "text",
-        name: "DATABASE_OWNER_PASSWORD",
-        message: "DATABASE_OWNER_PASSWORD",
-        initial: () => generatePassword(18),
-      },
-      {
-        type: "text",
-        name: "DATABASE_AUTHENTICATOR_PASSWORD",
-        message: "DATABASE_AUTHENTICATOR_PASSWORD",
-        initial: () => generatePassword(18),
-      },
-      {
-        type: "text",
-        name: "SHADOW_DATABASE_PASSWORD",
-        message: "SHADOW_DATABASE_PASSWORD",
-        initial: () => generatePassword(18),
-      },
-      {
-        type: "text",
-        name: "TEST_DATABASE_PASSWORD",
-        message: "TEST_DATABASE_PASSWORD",
-        initial: () => generatePassword(18),
-      },
-      {
-        type: "text",
-        name: "SECRET",
-        message: "SECRET (used for signing tokens):",
-        initial: () => generatePassword(32),
-      },
-    ],
-  );
+  if (autoGenPasswords)
+    prompts.override(
+      Object.assign({}, config, {
+        ROOT_DATABASE_PASSWORD: generatePassword(18),
+        DATABASE_OWNER_PASSWORD: generatePassword(18),
+        DATABASE_AUTHENTICATOR_PASSWORD: generatePassword(18),
+        SHADOW_DATABASE_PASSWORD: generatePassword(18),
+        TEST_DATABASE_PASSWORD: generatePassword(18),
+        SECRET: generatePassword(32),
+      }),
+    );
+  const PASSWORDS = await prompts([
+    {
+      type: "text",
+      name: "ROOT_DATABASE_PASSWORD",
+      message: "ROOT_DATABASE_PASSWORD",
+      initial: () => generatePassword(18),
+    },
+    {
+      type: "text",
+      name: "DATABASE_OWNER_PASSWORD",
+      message: "DATABASE_OWNER_PASSWORD",
+      initial: () => generatePassword(18),
+    },
+    {
+      type: "text",
+      name: "DATABASE_AUTHENTICATOR_PASSWORD",
+      message: "DATABASE_AUTHENTICATOR_PASSWORD",
+      initial: () => generatePassword(18),
+    },
+    {
+      type: "text",
+      name: "SHADOW_DATABASE_PASSWORD",
+      message: "SHADOW_DATABASE_PASSWORD",
+      initial: () => generatePassword(18),
+    },
+    {
+      type: "text",
+      name: "TEST_DATABASE_PASSWORD",
+      message: "TEST_DATABASE_PASSWORD",
+      initial: () => generatePassword(18),
+    },
+    {
+      type: "text",
+      name: "SECRET",
+      message: "SECRET (used for signing tokens):",
+      initial: () => generatePassword(32),
+    },
+  ]);
 
   const envFile = Object.entries({
     ...config,
@@ -229,7 +223,7 @@ async function createConfig() {
     DATABASE_VISITOR: DATABASE_VISITOR,
     SECRET: PASSWORDS.SECRET,
     PORT,
-    ROOT_URL,
+    VITE_ROOT_URL,
   })
     .map(([k, v]) => `${k}=${v}`)
     .join("\n")

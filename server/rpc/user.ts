@@ -23,7 +23,7 @@ export class UserRpcs extends RpcGroup.make(
     payload: S.Struct({
       username: S.NonEmptyTrimmedString,
       password: S.NonEmptyTrimmedString,
-      email: S.NonEmptyTrimmedString.pipe(S.NullOr),
+      email: S.NullOr(S.NonEmptyTrimmedString),
     }),
     success: User.select,
   }),

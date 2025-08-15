@@ -72,7 +72,7 @@ export class PostsRepo extends Effect.Service<PostsRepo>()("Posts/PostRepo", {
       }) =>
         Effect.gen(function* () {
           let query = baseQuery
-            .orderBy(sql.lit(opts.sort ?? "created_at"), "desc")
+            .orderBy((eb) => eb.ref(opts.sort ?? "created_at"), "desc")
             .limit((eb) => eb.lit(50));
           if (opts.username)
             query = query.where("u.username", "=", opts.username);
@@ -82,4 +82,5 @@ export class PostsRepo extends Effect.Service<PostsRepo>()("Posts/PostRepo", {
   }),
 }) {
   // static Test = makeTestLayer(PostRepo)({})
+  static Live = PostsRepo.Default;
 }

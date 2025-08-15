@@ -9,7 +9,7 @@ export { sql } from "kysely";
 
 export type KyselyDB = PgKysely.EffectKysely<DB>;
 
-const pgConfig: PgClient.PgClientConfig = {
+export const pgConfig: PgClient.PgClientConfig = {
   // transformQueryNames: camelToSnake,
   // transformResultNames: snakeToCamel,
 } as const;
@@ -67,13 +67,14 @@ export const withAuthContext = <A, E = unknown, R = unknown>(
 ) =>
   Effect.gen(function* () {
     const db = yield* PgAuthDB;
+    const databaseVisitor = yield* Config.string("DATABASE_VISITOR");
     return yield* db.withTransaction(
       db
         .selectNoFrom((eb) => [
           eb
             .fn<void>("set_config", [
               sql.lit("role"),
-              sql.lit(Config.string("DATABASE_VISITOR")),
+              sql.lit(databaseVisitor),
               eb.lit(false),
             ])
             .as("_1"),

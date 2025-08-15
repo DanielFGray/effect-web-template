@@ -111,4 +111,3 @@ create function app_public.unstar_comment(id bigint) returns bigint as $$
 $$ language sql volatile security definer;
 grant execute on function app_public.unstar_comment to :DATABASE_VISITOR;
 
-
