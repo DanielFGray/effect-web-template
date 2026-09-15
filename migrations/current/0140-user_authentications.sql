@@ -86,7 +86,10 @@ alter table app_private.user_authentication_secrets enable row level security;
  * so we only let code call into `login` that we trust to not roll back the
  * transaction afterwards.
  */
-create function app_private.login(username citext, password text) returns app_public.users as $$
+create function app_private.login(
+  username citext,
+  password text
+) returns app_public.users as $$
 declare
   v_user app_public.users;
   v_user_secret app_private.user_secrets;
@@ -301,7 +304,11 @@ begin
 end;
 $$ language plpgsql volatile;
 
-create function app_private.reset_password(user_id uuid, reset_token text, new_password text) returns boolean as $$
+create function app_private.reset_password(
+  user_id uuid,
+  reset_token text,
+  new_password text
+) returns boolean as $$
 declare
   v_user app_public.users;
   v_user_secret app_private.user_secrets;
@@ -471,7 +478,10 @@ $$ language plpgsql strict volatile security definer set search_path to pg_catal
  * the user type it twice, but that isn't necessary in the API.
  */
 
-create function app_public.change_password(old_password text, new_password text) returns boolean as $$
+create function app_public.change_password(
+  old_password text,
+  new_password text
+) returns boolean as $$
 declare
   v_user app_public.users;
   v_user_secret app_private.user_secrets;
@@ -546,10 +556,10 @@ begin
     perform app_private.assert_valid_password(password);
   end if;
   if email is null then
-    raise exception 'Email is required' using errcode = 'MODAT';
+    raise exception 'Email is required' using errcode = 'MDEML';
   end if;
   if email_is_verified = false and password is null then
-    raise exception 'Password is required' using errcode = 'MODAT';
+    raise exception 'Password is required' using errcode = 'MDPWD';
   end if;
 
   -- Insert the new user

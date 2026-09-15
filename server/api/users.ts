@@ -1,257 +1,79 @@
-import { Effect, Layer } from "effect";
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiSchema,
-  HttpServerResponse,
-} from "@effect/platform";
-import { Schema as S } from "effect";
-import { User, UsersRepo } from "../services/users.js";
-import { Email } from "../services/email.js";
-import { SessionService } from "../services/session.js";
-import { withRequiredAuth } from "../lib/auth-helpers.js";
-import { getCurrentUserId } from "../lib/auth-context.js";
-import { createUserSession } from "../lib/auth-middleware.js";
+import { Effect, Config } from "effect";
+import { HttpApiBuilder, HttpServerResponse } from "@effect/platform";
+import { Users } from "../services/users.js";
+import { Sessions } from "../services/session.js";
+import { CookieSigner } from "../services/cookie-signer.js";
+import { withAuthContext } from "../db.js";
+import { Contract } from "../../shared/httpApi.js";
 
-const idParam = HttpApiSchema.param("id", S.UUID);
+const withSessionCookie = Effect.fnUntraced(function* (
+  sessionId: string,
+  response: HttpServerResponse.HttpServerResponse,
+) {
+  const signedSessionId = yield* CookieSigner.sign(sessionId);
+  return yield* HttpServerResponse.setCookie(response, "session", signedSessionId, {
+    httpOnly: true,
+    secure: (yield* Config.string("NODE_ENV")) === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: "30 days",
+  });
+}, Effect.orDie);
 
-function isValidPassword(password: unknown) {
-  // Password validation logic: at least 8 characters
-  return typeof password === "string" && password.length >= 8;
-}
-
-const Password = S.NonEmptyTrimmedString.pipe(
-  S.filter(isValidPassword, {
-    identifier: "Password",
-    title: "Password",
-    jsonSchema: { minLength: 8 },
-  }),
-);
-
-export const UsersApiGroup = HttpApiGroup.make("users")
-  .add(
-    HttpApiEndpoint.post("register", "/auth/register")
-      .setPayload(
-        S.Struct({
-          username: S.NonEmptyTrimmedString,
-          password: Password,
-          email: S.NullOr(Email),
-        }),
-      )
-      .addSuccess(User.select, { status: 201 }),
-  )
-
-  .add(
-    HttpApiEndpoint.post("login", "/auth/login")
-      .setPayload(
-        S.Struct({
-          id: S.NonEmptyTrimmedString,
-          password: S.NonEmptyTrimmedString,
-        }),
-      )
-      .addSuccess(User.select),
-  )
-
-  .add(HttpApiEndpoint.post("logout", "/auth/logout").addSuccess(S.Void))
-
-  .add(
-    HttpApiEndpoint.post(
-      "request-deletion",
-      "/auth/request-deletion",
-    ).addSuccess(S.Struct({ request_account_deletion: S.Boolean })),
-  )
-
-  .add(
-    HttpApiEndpoint.post("confirm-deletion", "/auth/confirm-deletion")
-      .setPayload(
-        S.Struct({
-          token: S.NonEmptyTrimmedString,
-        }),
-      )
-      .addSuccess(
-        S.Struct({
-          confirm_account_deletion: S.Boolean,
-        }),
-      ),
-  )
-
-  .add(
-    HttpApiEndpoint.post("forgot-password", "/auth/forgot-password")
-      .setPayload(S.Struct({ email: Email }))
-      .addSuccess(S.Void),
-  )
-
-  .add(
-    HttpApiEndpoint.post("reset-password", "/auth/reset-password")
-      .setPayload(
-        S.Struct({
-          userId: S.UUID,
-          token: S.NonEmptyTrimmedString,
-          password: Password,
-        }),
-      )
-      .addSuccess(
-        S.Struct({
-          reset_password: S.Boolean,
-        }),
-      ),
-  )
-
-  .add(
-    HttpApiEndpoint.post("change-password", "/auth/change-password")
-      .setPayload(
-        S.Struct({
-          oldPassword: S.NonEmptyTrimmedString,
-          newPassword: Password,
-        }),
-      )
-      .addSuccess(
-        S.Struct({
-          change_password: S.Boolean,
-        }),
-      ),
-  )
-
-  .add(
-    HttpApiEndpoint.patch("update-profile", "/profile")
-      .setPayload(User.update.pick("username", "name", "avatar_url", "bio"))
-      .addSuccess(User.select),
-  )
-
-  .add(
-    HttpApiEndpoint.post(
-      "oauth-link",
-    )`/auth/${HttpApiSchema.param("provider", S.String)}`
-      .setPayload(
-        S.Struct({
-          userId: S.NullOr(S.String),
-          username: S.String,
-          serviceData: S.Record({ key: S.String, value: S.Unknown }),
-          profile: S.Record({ key: S.String, value: S.Unknown }),
-          tokens: S.Record({ key: S.String, value: S.Unknown }),
-        }),
-      )
-      .addSuccess(S.Void),
-  )
-
-  .add(
-    HttpApiEndpoint.del("oauth-unlink")`/oauth/${idParam}`.addSuccess(
-      S.Boolean,
-    ),
-  );
-
-export const UsersApi = HttpApi.make("UsersApi").add(UsersApiGroup);
-
-export const UsersApiGroupLive = HttpApiBuilder.group(
-  UsersApi,
-  "users",
-  (handlers) =>
-    Effect.gen(function* () {
-      const repo = yield* UsersRepo;
-      const sessionService = yield* SessionService;
-      return handlers
-        .handle("register", ({ payload }) =>
-          Effect.gen(function* () {
-            const user = yield* repo.register(payload).pipe(Effect.head);
-            const session = yield* sessionService.createSession(user.id);
-
-            // Create response with session cookie set
-            return yield* HttpServerResponse.json(user, { status: 201 }).pipe(
-              HttpServerResponse.setCookie("session", session.uuid, {
-                httpOnly: true,
-                secure: false, // Set to true in production with HTTPS
-                sameSite: "lax",
-                path: "/",
-                maxAge: "30 days",
-              }),
-            );
-          }),
-        )
-        .handle("login", ({ payload }) =>
-          Effect.gen(function* () {
-            const user = yield* repo.login(payload).pipe(Effect.head);
-            const session = yield* sessionService.createSession(user.id);
-
-            return yield* HttpServerResponse.json(user).pipe(
-              HttpServerResponse.setCookie("session", session.uuid, {
-                httpOnly: true,
-                secure: false, // Set to true in production with HTTPS
-                sameSite: "lax",
-                path: "/",
-                maxAge: "30 days",
-              }),
-            );
-          }),
-        )
-        .handle("logout", ({ request }) =>
-          withRequiredAuth(request, repo.logout()).pipe(
-            Effect.head,
-            Effect.map((first) => first.result),
-          ),
-        )
-        .handle("request-deletion", ({ request }) =>
-          withRequiredAuth(request, repo.requestAccountDeletion()).pipe(
-            Effect.head,
-          ),
-        )
-        .handle("confirm-deletion", ({ request, payload }) =>
-          withRequiredAuth(request, repo.confirmAccountDeletion(payload)).pipe(
-            Effect.head,
-            Effect.map((first) => ({
-              confirm_account_deletion: first.confirm_account_deletion,
-            })),
-          ),
-        )
-        .handle("forgot-password", ({ payload }) =>
-          repo.forgotPassword(payload).pipe(
-            Effect.head,
-            Effect.map((first) => first.result),
-          ),
-        )
-        .handle("reset-password", ({ payload }) =>
-          repo.resetPassword(payload).pipe(
-            Effect.head,
-            Effect.map(({ result }) => ({
-              reset_password: Boolean(result.reset_password),
-            })),
-          ),
-        )
-        .handle("change-password", ({ request, payload }) =>
-          withRequiredAuth(request, repo.changePassword(payload)).pipe(
-            Effect.head,
-            Effect.map(({ result }) => ({
-              change_password: Boolean(result.change_password),
-            })),
-          ),
-        )
-        .handle("update-profile", ({ request, payload }) =>
-          withRequiredAuth(
-            request,
-            Effect.gen(function* () {
-              const userId = yield* getCurrentUserId();
-              return yield* repo.updateProfile({ ...payload, userId });
-            }),
-          ).pipe(Effect.head),
-        )
-        .handle("oauth-link", ({ payload }) =>
-          repo.oauthLink(payload).pipe(
-            Effect.head,
-            Effect.map(() => undefined as void),
-          ),
-        )
-        .handle("oauth-unlink", ({ path: { id }, request }) =>
-          withRequiredAuth(request, repo.oauthUnlink({ id })).pipe(
-            Effect.head,
-            Effect.map((result) => result.numDeletedRows > 0),
-          ),
+export const UsersApiGroupLive = HttpApiBuilder.group(Contract, "users", (handlers) =>
+  handlers
+    .handle("register", ({ payload }) =>
+      Effect.gen(function* () {
+        const user = yield* Users.register(payload);
+        const session = yield* Sessions.createSession(user.id);
+        return yield* withSessionCookie(
+          session.uuid,
+          yield* HttpServerResponse.json(user, { status: 201 }).pipe(Effect.orDie),
         );
-    }),
-);
-
-// Layer for the complete Users API
-export const UsersApiLive = HttpApiBuilder.api(UsersApi).pipe(
-  Layer.provide(UsersApiGroupLive),
-  Layer.provide(UsersRepo.Live),
+      }),
+    )
+    .handle("login", ({ payload }) =>
+      Effect.gen(function* () {
+        const user = yield* Users.login(payload);
+        const session = yield* Sessions.createSession(user.id);
+        return yield* withSessionCookie(
+          session.uuid,
+          yield* HttpServerResponse.json(user).pipe(Effect.orDie),
+        );
+      }),
+    )
+    .handle("resetPassword", ({ payload }) => Users.resetPassword(payload))
+    .handle("logout", () => Users.logout())
+    .handle("requestDeletion", () =>
+      Effect.gen(function* () {
+        const users = yield* Users;
+        return yield* users.requestAccountDeletion();
+      }).pipe(withAuthContext),
+    )
+    .handle("confirmDeletion", ({ payload }) =>
+      Effect.gen(function* () {
+        const users = yield* Users;
+        return yield* users.confirmAccountDeletion(payload);
+      }).pipe(withAuthContext),
+    )
+    .handle("forgotPassword", ({ payload }) => Users.forgotPassword(payload))
+    .handle("changePassword", ({ payload }) =>
+      Effect.gen(function* () {
+        const users = yield* Users;
+        return yield* users.changePassword(payload);
+      }).pipe(withAuthContext),
+    )
+    .handle("updateProfile", ({ payload }) =>
+      Effect.gen(function* () {
+        const users = yield* Users;
+        return yield* users.updateProfile(payload);
+      }).pipe(withAuthContext),
+    )
+    .handle("oauthLink", ({ payload }) => Users.oauthLink(payload))
+    .handle("oauthUnlink", ({ path: { id } }) =>
+      Effect.gen(function* () {
+        const users = yield* Users;
+        return yield* users.oauthUnlink({ id });
+      }).pipe(withAuthContext),
+    ),
 );

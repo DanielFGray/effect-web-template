@@ -1,0 +1,81 @@
+import { Schema as S } from "effect";
+import { Model } from "@effect/sql";
+
+export class User extends Model.Class<User>("User")({
+  id: Model.Generated(S.UUID),
+  username: S.NonEmptyTrimmedString,
+  name: S.NullOr(S.NonEmptyTrimmedString),
+  avatar_url: S.NullOr(S.NonEmptyTrimmedString),
+  bio: S.NullOr(S.NonEmptyTrimmedString),
+  role: S.Literal("user", "admin"),
+  is_verified: S.Boolean,
+  created_at: Model.Generated(S.Date),
+  updated_at: Model.Generated(S.Date),
+}) {}
+
+export class Session extends Model.Class<Session>("Session")({
+  uuid: S.UUID,
+  user_id: S.UUID,
+  created_at: Model.Generated(S.Date),
+  last_active: Model.Generated(S.Date),
+}) {}
+
+export const AuthenticatedUser = S.Struct({
+  session_id: S.UUID,
+  user_id: S.UUID,
+  username: S.NonEmptyTrimmedString,
+  name: S.NullOr(S.NonEmptyTrimmedString),
+  avatar_url: S.NullOr(S.NonEmptyTrimmedString),
+  role: S.Literal("user", "admin"),
+  is_verified: S.Boolean,
+});
+
+export class Post extends Model.Class<Post>("Post")({
+  id: Model.Generated(S.BigInt),
+  user_id: Model.Generated(S.NullOr(S.UUID)),
+  body: S.NonEmptyTrimmedString,
+  privacy: S.Literal("public", "secret", "private"),
+  created_at: Model.Generated(S.Date),
+  updated_at: Model.Generated(S.Date),
+}) {}
+
+export const PostWithDetails = S.Struct({
+  ...Post.select.fields,
+  stars: S.Union(S.BigInt, S.Number, S.String),
+  user: S.Struct({
+    username: S.NullOr(S.String),
+    avatar_url: S.NullOr(S.String),
+  }),
+}).pipe(S.omit("user_id"));
+
+export class UserEmail extends Model.Class<UserEmail>("UserEmail")({
+  id: Model.Generated(S.UUID),
+  user_id: S.UUID,
+  email: S.String,
+  is_verified: S.Boolean,
+  is_primary: S.Boolean,
+  created_at: Model.Generated(S.Date),
+  updated_at: Model.Generated(S.Date),
+}) {}
+
+function isValidPassword(password: unknown) {
+  return typeof password === "string" && password.length >= 8;
+}
+
+export const Password = S.NonEmptyTrimmedString.pipe(
+  S.filter(isValidPassword, {
+    identifier: "Password",
+    title: "Password",
+    jsonSchema: { minLength: 8 },
+  }),
+);
+
+const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+export const EmailSchema = S.String.pipe(
+  S.filter((email): email is string => emailRegex.test(email), {
+    identifier: "Email",
+    title: "Email",
+    jsonSchema: { format: "email", minLength: 6, maxLength: 998 },
+  }),
+);

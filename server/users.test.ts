@@ -7,12 +7,16 @@ import {
   HttpClientRequest,
 } from "@effect/platform";
 import { FetchHttpClient } from "@effect/platform";
-import { User } from "./services/users.js";
+import { User } from "../shared/schemas.js";
 
 // Test layer that provides HTTP client for testing against running server
 const TestHttpClientLive = FetchHttpClient.layer;
 
 const baseUrl = Config.string("VITE_ROOT_URL");
+
+// Unique per test run so re-running against a live, unreset database never
+// collides with usernames left behind by a previous run.
+const runId = Math.random().toString(36).slice(2, 8);
 
 suite("user registration HTTP flow", () => {
   it.live("POST /auth/register returns user and sets session cookie", () =>
@@ -25,10 +29,10 @@ suite("user registration HTTP flow", () => {
 
       // Make the registration request
       const response = yield* HttpClientRequest.post(
-        `${baseUrl}/auth/register`,
+        `${yield* baseUrl}/auth/register`,
       ).pipe(
         HttpClientRequest.bodyJson({
-          username: "testuser",
+          username: `testuser_${runId}`,
           password: "password123",
           email: "test@example.com",
         }),
@@ -44,7 +48,7 @@ suite("user registration HTTP flow", () => {
       );
       expect(user).toBeTypeOf("object");
       expect(user).toHaveProperty("id");
-      expect(user).toHaveProperty("username", "testuser");
+      expect(user).toHaveProperty("username", `testuser_${runId}`);
       expect(user).toHaveProperty("role", "user");
       expect(user).toHaveProperty("is_verified", false);
       expect(user.created_at).toBeInstanceOf(Date);
@@ -55,7 +59,10 @@ suite("user registration HTTP flow", () => {
       expect(Option.isSome(sessionCookie)).toBe(true);
 
       if (Option.isSome(sessionCookie)) {
-        expect(sessionCookie.value.value).toMatch(/^[0-9a-f-]{36}$/); // UUID format
+        // signed cookie: <session uuid>.<hmac signature>
+        expect(sessionCookie.value.value).toMatch(
+          /^[0-9a-f-]{36}\.[\w-]+$/,
+        );
       }
     }).pipe(Effect.provide(TestHttpClientLive)),
   );
@@ -70,10 +77,10 @@ suite("user registration HTTP flow", () => {
 
       // First, register a user to get session cookie
       const registerResponse = yield* HttpClientRequest.post(
-        `${baseUrl}/auth/register`,
+        `${yield* baseUrl}/auth/register`,
       ).pipe(
         HttpClientRequest.bodyJson({
-          username: "authuser",
+          username: `authuser_${runId}`,
           password: "password123",
           email: "auth@example.com",
         }),
@@ -92,12 +99,13 @@ suite("user registration HTTP flow", () => {
 
       // Now make an authenticated request (profile update)
       const updateResponse = yield* HttpClientRequest.patch(
-        `${baseUrl}/profile`,
+        `${yield* baseUrl}/profile`,
       ).pipe(
         HttpClientRequest.bodyJson({
-          username: "authuser_updated",
+          username: `authuser_${runId}_updated`,
           name: "Test User",
           bio: "This is a test user",
+          avatar_url: null,
         }),
         Effect.flatMap(clientWithCookies.execute),
       );
@@ -109,7 +117,7 @@ suite("user registration HTTP flow", () => {
         updateResponse,
       );
       expect(updatedUser.id).toBe(user.id);
-      expect(updatedUser.username).toBe("authuser_updated");
+      expect(updatedUser.username).toBe(`authuser_${runId}_updated`);
       expect(updatedUser.name).toBe("Test User");
       expect(updatedUser.bio).toBe("This is a test user");
     }).pipe(Effect.provide(TestHttpClientLive)),
@@ -120,12 +128,14 @@ suite("user registration HTTP flow", () => {
       const client = yield* HttpClient.HttpClient;
 
       // Try to make authenticated request without session cookie
-      const result = yield* HttpClientRequest.patch(`${baseUrl}/profile`).pipe(
+      const result = yield* HttpClientRequest.patch(
+        `${yield* baseUrl}/profile`,
+      ).pipe(
         HttpClientRequest.bodyJson({
           username: "unauthorized_user",
           name: "Should Fail",
         }),
-        Effect.flatMap(client.execute),
+        Effect.flatMap(client.pipe(HttpClient.filterStatusOk).execute),
         Effect.either,
       );
 
@@ -143,9 +153,9 @@ suite("user registration HTTP flow", () => {
       );
 
       // Register user and get session
-      yield* HttpClientRequest.post(`${baseUrl}/auth/register`).pipe(
+      yield* HttpClientRequest.post(`${yield* baseUrl}/auth/register`).pipe(
         HttpClientRequest.bodyJson({
-          username: "logoutuser",
+          username: `logoutuser_${runId}`,
           password: "password123",
           email: "logout@example.com",
         }),
@@ -159,16 +169,18 @@ suite("user registration HTTP flow", () => {
 
       // Logout
       const logoutResponse = yield* clientWithCookies.post(
-        `${baseUrl}/auth/logout`,
+        `${yield* baseUrl}/auth/logout`,
       );
-      expect(logoutResponse.status).toBe(200);
+      expect(logoutResponse.status).toBe(204);
 
       // Try to use the session cookie for an authenticated request after logout
-      const result = yield* HttpClientRequest.patch(`${baseUrl}/profile`).pipe(
+      const result = yield* HttpClientRequest.patch(
+        `${yield* baseUrl}/profile`,
+      ).pipe(
         HttpClientRequest.bodyJson({
           username: "should_fail",
         }),
-        Effect.flatMap(clientWithCookies.execute),
+        Effect.flatMap(clientWithCookies.pipe(HttpClient.filterStatusOk).execute),
         Effect.either,
       );
 
@@ -182,14 +194,14 @@ suite("user registration HTTP flow", () => {
       const client = yield* HttpClient.HttpClient;
 
       const userData = {
-        username: "duplicateuser",
+        username: `duplicateuser_${runId}`,
         password: "password123",
         email: "duplicate@example.com",
       };
 
       // First registration should succeed
       const firstResponse = yield* HttpClientRequest.post(
-        `${baseUrl}/auth/register`,
+        `${yield* baseUrl}/auth/register`,
       ).pipe(
         HttpClientRequest.bodyJson(userData),
         Effect.flatMap(client.execute),
@@ -198,13 +210,13 @@ suite("user registration HTTP flow", () => {
 
       // Second registration with same username should fail
       const result = yield* HttpClientRequest.post(
-        `${baseUrl}/auth/register`,
+        `${yield* baseUrl}/auth/register`,
       ).pipe(
         HttpClientRequest.bodyJson({
           ...userData,
           email: "different@example.com", // Different email, same username
         }),
-        Effect.flatMap(client.execute),
+        Effect.flatMap(client.pipe(HttpClient.filterStatusOk).execute),
         Effect.either,
       );
 
@@ -218,14 +230,14 @@ suite("user registration HTTP flow", () => {
       const client = yield* HttpClient.HttpClient;
 
       const result = yield* HttpClientRequest.post(
-        `${baseUrl}/auth/register`,
+        `${yield* baseUrl}/auth/register`,
       ).pipe(
         HttpClientRequest.bodyJson({
-          username: "weakpassuser",
+          username: `weakpassuser_${runId}`,
           password: "123", // Too short
           email: "weak@example.com",
         }),
-        Effect.flatMap(client.execute),
+        Effect.flatMap(client.pipe(HttpClient.filterStatusOk).execute),
         Effect.either,
       );
 

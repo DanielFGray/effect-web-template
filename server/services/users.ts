@@ -1,100 +1,65 @@
-import { Model } from "@effect/sql";
-import { Effect, Schema as S, Data } from "effect";
-import { PgRootDB, sql } from "../db.js";
-
-export class User extends Model.Class<User>("User")({
-  id: Model.Generated(S.UUID),
-  username: S.NonEmptyTrimmedString,
-  name: S.NullOr(S.NonEmptyTrimmedString),
-  avatar_url: S.NullOr(S.NonEmptyTrimmedString),
-  bio: S.NullOr(S.NonEmptyTrimmedString),
-  role: S.Union(S.Literal("user"), S.Literal("admin")),
-  is_verified: S.Boolean,
-  created_at: Model.Generated(S.Date),
-  updated_at: Model.Generated(S.Date),
-}) {}
+import { Effect } from "effect";
+import { PgRootDB, CurrentDb, sql } from "../db.js";
+import { catchSql, mapDbErrors, mapUniqueViolation } from "../db.js";
+import {
+  AccountLocked,
+  WeakPassword,
+  AuthenticationRequired,
+  InvalidCredentials,
+  MissingData,
+  AccountAlreadyLinked,
+  UsernameTaken,
+  InternalError,
+} from "../../shared/errors.js";
+import { User } from "../../shared/schemas.js";
+import type { AppPublicUsers } from "../../generated/db.js";
+import type { Selectable, Updateable } from "kysely";
 
 type SelectableUser = typeof User.select.Type;
 
-// Authentication and account security errors
-export class AccountLockedError extends Data.TaggedError("AccountLocked")<{
-  readonly message: string;
-  readonly lockType: "login_attempts" | "password_reset";
-}> {}
-
-export class WeakPasswordError extends Data.TaggedError("WeakPassword")<{
-  readonly message: string;
-  readonly requirements?: string[];
-}> {}
-
-export class AuthenticationRequiredError extends Data.TaggedError(
-  "AuthenticationRequired",
-)<{
-  readonly message: string;
-  readonly action: string;
-}> {}
-
-export class InvalidCredentialsError extends Data.TaggedError(
-  "InvalidCredentials",
-)<{
-  readonly message: string;
-}> {}
-
-export class MissingDataError extends Data.TaggedError("MissingData")<{
-  readonly message: string;
-  readonly field: "email" | "password" | "username";
-}> {}
-
-export class AccountAlreadyLinkedError extends Data.TaggedError(
-  "AccountAlreadyLinked",
-)<{
-  readonly message: string;
-  readonly service: string;
-}> {}
-
-export class AccessDeniedError extends Data.TaggedError("AccessDenied")<{
-  readonly message: string;
-  readonly reason: "invalid_token" | "expired_token" | "wrong_account";
-}> {}
-
-export class UsersRepo extends Effect.Service<UsersRepo>()("User/Accounts", {
+export class Users extends Effect.Service<Users>()("User/Accounts", {
+  accessors: true,
+  dependencies: [PgRootDB.Live],
   effect: Effect.gen(function* () {
-    const db = yield* PgRootDB;
+    const rootDb = yield* PgRootDB;
 
-    return {
+    const queries = {
       login: ({ id, password }: { id: string; password: string }) =>
-        db
+        rootDb
           .selectFrom((eb) =>
             eb
-              .fn<
-                typeof User.Type
-              >("app_private.login", [sql`${id}::citext`, eb.val(password)])
+              .fn<typeof User.Type>("app_private.login", [sql`${id}::citext`, eb.val(password)])
               .as("u"),
           )
           .selectAll()
           // @ts-expect-error: Kysely doesn't seem to allow referencing tables directly
-          .where((eb) => eb.not(eb(eb.ref("u"), "is", null)))
-          .pipe(
-            Effect.mapError((error) => {
-              if (
-                error._tag === "SqlError" &&
-                "code" in error &&
-                error.code === "LOCKD"
-              ) {
-                return new AccountLockedError({
-                  message:
-                    "User account locked - too many login attempts. Try again after 5 minutes.",
-                  lockType: "login_attempts",
-                });
-              }
-              return error;
-            }),
-          ),
+          .where((eb) => eb.not(eb(eb.ref("u"), "is", null))),
 
-      logout: () =>
-        db.selectNoFrom((eb) => [
-          eb.fn<void>("app_public.logout", []).as("result"),
-        ]),
+      logout: () => rootDb.selectNoFrom((eb) => [eb.fn<void>("app_public.logout", []).as("logout")]),
+
+      reallyCreateUser: (payload: {
+        username: string;
+        password: string;
+        email?: string | null;
+        name?: string | null;
+        verified?: boolean | null;
+        avatarUrl?: string | null;
+      }) =>
+        rootDb
+          .selectFrom(
+            sql<typeof User.Type>`
+              app_private.really_create_user(
+                username => ${payload.username}::citext,
+                email => ${payload.email || null},
+                email_is_verified => ${payload.verified},
+                name => ${payload.name},
+                avatar_url => ${payload.avatarUrl},
+                password => ${payload.password}::text
+              )`.as("u"),
+          )
+          .selectAll()
+          // @ts-expect-error: Kysely doesn't seem to allow referencing tables directly
+          .where((eb) => eb.not(eb(eb.ref("u"), "is", null))),
 
       register: ({
         username,
@@ -105,124 +70,18 @@ export class UsersRepo extends Effect.Service<UsersRepo>()("User/Accounts", {
         password: string;
         email?: string | null;
       }) =>
-        db
-          .selectFrom(
-            sql<typeof User.Type>`
-          app_private.really_create_user(
-            username => ${username}::citext,
-            email => ${email || null},
-            email_is_verified => false,
-            name => null,
-            avatar_url => null,
-            password => ${password}::text
-          )`.as("u"),
-          )
-          .selectAll()
-          // @ts-expect-error: Kysely doesn't seem to allow referencing tables directly
-          .where((eb) => eb.not(eb(eb.ref("u"), "is", null)))
-          .pipe(
-            Effect.mapError((error) => {
-              if (error._tag === "SqlError" && "code" in error) {
-                switch (error.code) {
-                  case "MODAT":
-                    return new MissingDataError({
-                      message: "Email is required",
-                      field: "email",
-                    });
-
-                  case "MODAT":
-                    return new MissingDataError({
-                      message: "Password is required",
-                      field: "password",
-                    });
-
-                  case "WEAKP":
-                    return new WeakPasswordError({
-                      message: "Password is too weak",
-                      requirements: ["At least 8 characters"],
-                    });
-
-                  case "TAKEN":
-                    return new AccountAlreadyLinkedError({
-                      message:
-                        "A different user already has this account linked",
-                      service: "oauth",
-                    });
-                }
-              }
-              return error;
-            }),
-          ),
-
-      updateProfile: ({
-        userId,
-        username,
-        name,
-        bio,
-        avatar_url,
-      }: {
-        userId: string;
-        username: string;
-        name?: string | null;
-        bio?: string | null;
-        avatar_url?: string | null;
-      }) =>
-        db
-          .updateTable("app_public.users")
-          .set({ username, name, bio, avatar_url })
-          .where("id", "=", userId)
-          .returningAll(),
-
-      changePassword: ({
-        oldPassword,
-        newPassword,
-      }: {
-        oldPassword: string;
-        newPassword: string;
-      }) =>
-        db
-          .selectNoFrom((eb) => [
-            eb
-              .fn<{
-                change_password: boolean | null;
-              }>("app_public.change_password", [
-                eb.val(oldPassword),
-                eb.val(newPassword),
-              ])
-              .as("result"),
-          ])
-          .pipe(
-            Effect.mapError((error) => {
-              if (error._tag === "SqlError" && "code" in error) {
-                switch (error.code) {
-                  case "LOGIN":
-                    return new AuthenticationRequiredError({
-                      message: "You must log in to change your password",
-                      action: "change_password",
-                    });
-
-                  case "CREDS": {
-                    return new InvalidCredentialsError({
-                      message: "Incorrect password",
-                    });
-                  }
-                  case "WEAKP": {
-                    return new WeakPasswordError({
-                      message: "Password is too weak",
-                      requirements: ["At least 8 characters"],
-                    });
-                  }
-                }
-              }
-              return error;
-            }),
-          ),
+        queries.reallyCreateUser({
+          username,
+          email: email || null,
+          name: username,
+          verified: false,
+          password,
+          avatarUrl: null,
+        }),
 
       forgotPassword: ({ email }: { email: string }) =>
-        db.selectNoFrom((eb) => [
-          eb
-            .fn<void>("app_public.forgot_password", [eb.val(email)])
-            .as("result"),
+        rootDb.selectNoFrom((eb) => [
+          eb.fn<void>("app_public.forgot_password", [eb.val(email)]).as("forgot_password"),
         ]),
 
       resetPassword: ({
@@ -234,16 +93,14 @@ export class UsersRepo extends Effect.Service<UsersRepo>()("User/Accounts", {
         token: string;
         password: string;
       }) =>
-        db.selectNoFrom((eb) => [
+        rootDb.selectNoFrom((eb) => [
           eb
-            .fn<{
-              reset_password: boolean | null;
-            }>("app_private.reset_password", [
+            .fn<boolean>("app_private.reset_password", [
               sql`${userId}::uuid`,
               eb.val(token),
               eb.val(password),
             ])
-            .as("result"),
+            .as("reset_password"),
         ]),
 
       oauthLink: ({
@@ -259,7 +116,7 @@ export class UsersRepo extends Effect.Service<UsersRepo>()("User/Accounts", {
         profile: Record<string, unknown>;
         tokens: Record<string, unknown>;
       }) =>
-        db
+        rootDb
           .selectFrom((eb) =>
             eb
               .fn<SelectableUser>("app_private.link_or_register_user", [
@@ -272,34 +129,228 @@ export class UsersRepo extends Effect.Service<UsersRepo>()("User/Accounts", {
               .as("u"),
           )
           .selectAll(),
+    } as const;
+
+    return {
+      queries,
+
+      logout: Effect.fn("db:user:logout")(
+        queries.logout,
+        Effect.head,
+        Effect.catchTag("NoSuchElementException", Effect.die),
+        Effect.map((x) => x.logout),
+        catchSql,
+      ),
+
+      login: Effect.fn("db:user:login")(
+        queries.login,
+        Effect.head,
+        Effect.mapError(
+          mapDbErrors({
+            CREDS: (msg) => new InvalidCredentials({ message: msg }),
+            LOCKD: (msg) => new AccountLocked({ message: msg }),
+          }),
+        ),
+        Effect.mapError((error) =>
+          error._tag === "NoSuchElementException"
+            ? new InternalError({ message: "Login failed" })
+            : error,
+        ),
+        catchSql,
+      ),
+
+      register: Effect.fn("db:user:register")(
+        queries.register,
+        Effect.head,
+        Effect.mapError(
+          mapDbErrors({
+            MDEML: (msg) =>
+              new MissingData({ message: msg, field: "email" }),
+            MDPWD: (msg) =>
+              new MissingData({ message: msg, field: "password" }),
+            WEAKP: (msg) =>
+              new WeakPassword({
+                message: msg,
+                requirements: ["At least 8 characters"],
+              }),
+            TAKEN: (msg) =>
+              new AccountAlreadyLinked({ message: msg, service: "oauth" }),
+          }),
+        ),
+        mapUniqueViolation(() => new UsernameTaken({ message: "username already exists" })),
+        catchSql,
+        Effect.mapError((error) =>
+          error._tag === "NoSuchElementException"
+            ? new InternalError({ message: "Registration failed" })
+            : error,
+        ),
+      ),
+
+      updateProfile: (
+        patch: Pick<Updateable<AppPublicUsers>, "name" | "avatar_url" | "bio" | "username">,
+      ) =>
+        Effect.gen(function* () {
+          const db = yield* CurrentDb;
+          return yield* db
+            .updateTable("app_public.users")
+            .set(patch)
+            .where("id", "=", (eb) => eb.fn("app_public.current_user_id", []))
+            .returningAll()
+            .pipe(
+              Effect.head,
+              catchSql,
+              Effect.mapError((error) =>
+                error._tag === "NoSuchElementException"
+                  ? new InternalError({ message: "Profile update failed" })
+                  : error,
+              ),
+            );
+        }),
+
+      changePassword: ({
+        oldPassword,
+        newPassword,
+      }: {
+        oldPassword: string;
+        newPassword: string;
+      }) =>
+        Effect.gen(function* () {
+          const db = yield* CurrentDb;
+          return yield* db
+            .selectNoFrom((eb) => [
+              eb
+                .fn<boolean>("app_public.change_password", [
+                  eb.val(oldPassword),
+                  eb.val(newPassword),
+                ])
+                .as("change_password"),
+            ])
+            .pipe(
+              Effect.head,
+              Effect.mapError(
+                mapDbErrors({
+                  LOGIN: (msg) =>
+                    new AuthenticationRequired({
+                      message: msg,
+                      action: "change_password",
+                    }),
+                  CREDS: (msg) => new InvalidCredentials({ message: msg }),
+                  WEAKP: (msg) =>
+                    new WeakPassword({
+                      message: msg,
+                      requirements: ["At least 8 characters"],
+                    }),
+                }),
+              ),
+              Effect.mapError((error) =>
+                error._tag === "NoSuchElementException"
+                  ? new InternalError({ message: "Password change failed" })
+                  : error,
+              ),
+              catchSql,
+            );
+        }),
+
+      forgotPassword: Effect.fn("db:user:forgotPassword")(
+        queries.forgotPassword,
+        Effect.head,
+        Effect.as(void 0 as void),
+        catchSql,
+        Effect.mapError((error) =>
+          error._tag === "NoSuchElementException"
+            ? new InternalError({ message: "Password reset request failed" })
+            : error,
+        ),
+      ),
+
+      resetPassword: Effect.fn("db:user:resetPassword")(
+        queries.resetPassword,
+        Effect.head,
+        catchSql,
+        Effect.mapError((error) =>
+          error._tag === "NoSuchElementException"
+            ? new InternalError({ message: "Password reset failed" })
+            : error,
+        ),
+      ),
+
+      oauthLink: Effect.fn("db:user:oauthLink")(
+        queries.oauthLink,
+        Effect.head,
+        catchSql,
+        Effect.mapError((error) =>
+          error._tag === "NoSuchElementException"
+            ? new InternalError({ message: "OAuth link failed" })
+            : error,
+        ),
+      ),
 
       oauthUnlink: ({ id }: { id: string }) =>
-        db.deleteFrom("app_public.user_authentications").where("id", "=", id),
+        Effect.gen(function* () {
+          const db = yield* CurrentDb;
+          return yield* db
+            .deleteFrom("app_public.user_authentications")
+            .where("id", "=", id)
+            .pipe(
+              Effect.head,
+              Effect.map((res) => res.numDeletedRows > 0),
+              catchSql,
+              Effect.mapError((error) =>
+                error._tag === "NoSuchElementException"
+                  ? new InternalError({ message: "OAuth unlink failed" })
+                  : error,
+              ),
+            );
+        }),
 
       requestAccountDeletion: () =>
-        db
-          .selectFrom((eb) =>
-            eb
-              .fn<{
-                request_account_deletion: boolean;
-              }>("app_public.request_account_deletion", [])
-              .as("request_account_deletion"),
-          )
-          .selectAll(),
+        Effect.gen(function* () {
+          const db = yield* CurrentDb;
+          return yield* db
+            .selectFrom((eb) =>
+              eb
+                .fn<{
+                  request_account_deletion: boolean;
+                }>("app_public.request_account_deletion", [])
+                .as("request_account_deletion"),
+            )
+            .selectAll()
+            .pipe(
+              Effect.head,
+              catchSql,
+              Effect.mapError((error) =>
+                error._tag === "NoSuchElementException"
+                  ? new InternalError({ message: "Account deletion request failed" })
+                  : error,
+              ),
+            );
+        }),
 
       confirmAccountDeletion: ({ token }: { token: string }) =>
-        db
-          .selectFrom((eb) =>
-            eb
-              .fn<{
-                confirm_account_deletion: boolean;
-              }>("app_public.confirm_account_deletion", [eb.val(token)])
-              .as("confirm_account_deletion"),
-          )
-          .selectAll(),
+        Effect.gen(function* () {
+          const db = yield* CurrentDb;
+          return yield* db
+            .selectFrom((eb) =>
+              eb
+                .fn<{
+                  confirm_account_deletion: boolean;
+                }>("app_public.confirm_account_deletion", [eb.val(token)])
+                .as("confirm_account_deletion"),
+            )
+            .selectAll()
+            .pipe(
+              Effect.head,
+              catchSql,
+              Effect.mapError((error) =>
+                error._tag === "NoSuchElementException"
+                  ? new InternalError({ message: "Account deletion confirmation failed" })
+                  : error,
+              ),
+            );
+        }),
     } as const;
   }),
 }) {
   // static Test = makeTestLayer(UsersRepo)({});
-  static Live = UsersRepo.Default;
+  static Live = Users.Default;
 }

@@ -37,8 +37,7 @@ alter table app_private.sessions
 create policy select_all on app_public.users
   for select using (true);
 -- You can only update yourself.
-create policy update_self on app_public.users
-  for update using (id = app_public.current_user_id());
+create policy update_self on app_public.users for update using (id = app_public.current_user_id());
 
 grant
   select,

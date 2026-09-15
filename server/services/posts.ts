@@ -1,86 +1,81 @@
-import { Model } from "@effect/sql";
-import { Effect, Schema as S } from "effect";
-import { PgRootDB, sql } from "../db.js";
+import { Effect } from "effect";
+import { jsonBuildObject } from "kysely/helpers/postgres";
+import { catchSql, CurrentDb, type KyselyDB } from "../db.js";
+import { InternalError } from "../../shared/errors.js";
+import { Post } from "../../shared/schemas.js";
 
-export class Post extends Model.Class<Post>("Post")({
-  id: Model.Generated(S.String),
-  user_id: Model.Generated(S.UUID),
-  body: S.NonEmptyTrimmedString,
-  privacy: S.Union(
-    S.Literal("public"),
-    S.Literal("secret"),
-    S.Literal("private"),
-  ),
-  created_at: Model.Generated(S.Date),
-  updated_at: Model.Generated(S.Date),
-}) {}
+export { Post, PostWithDetails } from "../../shared/schemas.js";
 
-export const PostWithDetails = S.Struct({
-  ...Post.select.fields,
-  stars: S.Union(S.BigInt, S.Number, S.String),
-  user: S.Struct({
-    avatar_url: S.NullOr(S.String),
-    username: S.String,
-  }),
-}).pipe(S.omit("user_id"));
-
-export class PostsRepo extends Effect.Service<PostsRepo>()("Posts/PostRepo", {
+export class Posts extends Effect.Service<Posts>()("Posts/PostRepo", {
+  accessors: true,
   effect: Effect.gen(function* () {
-    const db = yield* PgRootDB;
-
-    const baseQuery = db
-      .selectFrom("app_public.posts as p")
-      .leftJoin("app_public.users as u", "p.user_id", "u.id")
-      .crossJoinLateral((eb) =>
-        eb
-          .selectFrom("app_public.stars_on_posts as s")
-          .select((eb) => [eb.fn.countAll().as("stars")])
-          .where("s.post_id", "=", eb.ref("p.id"))
-          .as("get_stars"),
-      )
-      .select((eb) => [
-        "p.id",
-        "p.body",
-        "p.privacy",
-        "p.created_at",
-        "p.updated_at",
-        "get_stars.stars",
-        eb
-          .fn<{
-            avatar_url: string;
-            username: string;
-          }>("json_build_object", [
-            sql.lit("avatar_url"),
-            eb.ref("u.avatar_url"),
-            sql.lit("username"),
-            eb.ref("u.username"),
-          ])
-          .as("user"),
-      ]);
+    const makeBaseQuery = (db: KyselyDB) =>
+      db
+        .selectFrom("app_public.posts as p")
+        .leftJoin("app_public.users as u", "p.user_id", "u.id")
+        .crossJoinLateral((eb) =>
+          eb
+            .selectFrom("app_public.stars_on_posts as s")
+            .select(() => [eb.fn.countAll().as("stars")])
+            .where("s.post_id", "=", eb.ref("p.id"))
+            .as("get_stars"),
+        )
+        .select((eb) => [
+          "p.id",
+          "p.body",
+          "p.privacy",
+          "p.created_at",
+          "p.updated_at",
+          jsonBuildObject({
+            username: eb.ref("u.username"),
+            avatar_url: eb.ref("u.avatar_url"),
+          }).as("user"),
+          "get_stars.stars",
+        ]);
 
     return {
-      insert: (values: {
-        body: string;
-        privacy?: typeof Post.fields.privacy.Type;
-      }) => db.insertInto("app_public.posts").values(values).returning(["id"]),
+      byId: (postId: (typeof Post.select.Type)["id"]) =>
+        Effect.gen(function* () {
+          const db = yield* CurrentDb;
+          return yield* makeBaseQuery(db)
+            .where("p.id", "=", postId)
+            .pipe(
+              Effect.head,
+              Effect.catchTag("NoSuchElementException", () => Effect.succeed(null)),
+              catchSql,
+            );
+        }),
 
-      findById: ({ id }: { id: string }) => baseQuery.where("p.id", "=", id),
+      insert: (values: typeof Post.insert.Type) =>
+        Effect.gen(function* () {
+          const db = yield* CurrentDb;
+          return yield* db
+            .insertInto("app_public.posts")
+            .values(values)
+            .returningAll()
+            .pipe(
+              Effect.head,
+              Effect.catchTag("NoSuchElementException", () =>
+                Effect.fail(new InternalError({ message: "Failed to create post" })),
+              ),
+              catchSql,
+            );
+        }),
 
       listBy: (opts: {
         username?: string;
-        sort?: "stars" | "created_at" | "updated_at";
+        limit?: number;
+        offset?: number;
+        sort?: "created_at" | "updated_at" | "stars";
       }) =>
         Effect.gen(function* () {
-          let query = baseQuery
-            .orderBy((eb) => eb.ref(opts.sort ?? "created_at"), "desc")
-            .limit((eb) => eb.lit(50));
-          if (opts.username)
-            query = query.where("u.username", "=", opts.username);
-          return yield* query;
+          const db = yield* CurrentDb;
+          let query = makeBaseQuery(db).limit(opts.limit ?? 50);
+          if (opts.username) query = query.where("u.username", "=", opts.username);
+          if (opts.sort) query = query.orderBy(opts.sort, "desc");
+          if (opts.offset) query = query.offset(opts.offset);
+          return yield* query.pipe(catchSql);
         }),
-    };
+    } as const;
   }),
-}) {
-  // static Test = makeTestLayer(PostRepo)({})
-  static Live = PostsRepo.Default;
-}
+}) {}

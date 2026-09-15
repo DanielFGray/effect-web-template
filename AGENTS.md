@@ -28,5 +28,3 @@
 - **Database**: Use Kysely with Effect SQL, migrations via graphile-migrate
 
 Remember to consult effect docs where necessary to understand effect APIs.
-
-READ AUTH_IMPLEMENTATION.md for info about authentication

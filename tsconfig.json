@@ -3,17 +3,14 @@
   "compilerOptions": {
     // File Layout
     "rootDir": "./",
-    "paths": {
-      "#*": [
-        "./*"
-      ]
-    },
     // "outDir": "./dist",
     // Environment Settings
     // See also https://aka.ms/tsconfig/module
     "module": "nodenext",
     "target": "esnext",
-    "types": [],
+    "types": [
+      "vite/client"
+    ],
     // For nodejs:
     // "lib": ["esnext"],
     // "types": ["node"],
@@ -33,6 +30,7 @@
     // Recommended Options
     "strict": true,
     "jsx": "react-jsx",
+    "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "noUncheckedSideEffectImports": true,
@@ -45,7 +43,9 @@
     ]
   },
   "exclude": [
-    "node_modules",
-    "server/rpc/**"
+    "node-pg-template/**",
+    "cypress/**",
+    "**/*.test.ts",
+    "node_modules"
   ]
 }

@@ -32,7 +32,7 @@ grant execute on function app_public.stars_on_posts(app_public.posts) to :DATABA
 create function app_public.posts_user_starred(
   p app_public.posts
 ) returns boolean as $$
-  select exists(select 1 from app_public.stars_on_posts where user_id = app_public.current_user_id())
+  select exists(select 1 from app_public.stars_on_posts where post_id = p.id and user_id = app_public.current_user_id())
 $$ language sql stable security definer;
 grant execute on function app_public.posts_user_starred(app_public.posts) to :DATABASE_VISITOR;
 
@@ -47,7 +47,7 @@ grant execute on function app_public.star_post to :DATABASE_VISITOR;
 create function app_public.unstar_post(
   id bigint
 ) returns bigint as $$
-  delete from app_public.stars_on_posts values where post_id = id and user_id = app_public.current_user_id();
+  delete from app_public.stars_on_posts where post_id = id and user_id = app_public.current_user_id();
   select count(*) from app_public.stars_on_posts where post_id = id;
 $$ language sql volatile security definer;
 grant execute on function app_public.unstar_post to :DATABASE_VISITOR;
@@ -90,8 +90,9 @@ create function app_public.comments_user_starred(
 ) returns boolean as $$
   select exists (
     select 1
-    from app_public.stars_on_posts
-    where user_id = app_public.current_user_id()
+    from app_public.stars_on_comments
+    where comment_id = c.id
+    and user_id = app_public.current_user_id()
   )
 $$ language sql stable security definer;
 grant execute on function app_public.comments_user_starred to :DATABASE_VISITOR;

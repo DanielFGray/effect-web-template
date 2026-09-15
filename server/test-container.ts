@@ -1,12 +1,4 @@
-import {
-  Console,
-  Context,
-  Effect,
-  Layer,
-  Redacted,
-  Stream,
-  String,
-} from "effect";
+import { Console, Context, Effect, Layer, Redacted } from "effect";
 import { NodeContext } from "@effect/platform-node";
 import { Command } from "@effect/platform";
 import * as Pg from "@effect/sql-pg";

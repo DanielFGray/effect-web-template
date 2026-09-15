@@ -174,3 +174,6 @@ dist
 # Finder (MacOS) folder config
 .DS_Store
 node_modules
+
+# kysely-codegen output, regenerated via `bun db:types`
+generated/

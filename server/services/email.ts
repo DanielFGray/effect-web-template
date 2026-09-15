@@ -1,167 +1,144 @@
-import { Effect, Schema as S, Data } from "effect";
-import { Model } from "@effect/sql";
-import type { AppPublicUserEmails } from "kysely-codegen";
+import { Effect } from "effect";
+import type { AppPublicUserEmails } from "../../generated/db.js";
 import type { Selectable } from "kysely";
-import { sql, PgRootDB } from "../db.js";
+import { sql, CurrentDb, catchSql, mapDbErrors } from "../db.js";
+import {
+  EmailAlreadyTaken,
+  CannotDeleteLastEmail,
+  EmailNotOwned,
+  EmailNotVerified,
+  InternalError,
+} from "../../shared/errors.js";
 
-export type Email = string & { __brand: "Email" };
-
-const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-
-const isValidEmail = (email: string): email is Email => {
-  return emailRegex.test(email);
-};
-
-export const Email = S.String.pipe(
-  S.filter(isValidEmail, {
-    identifier: "Email",
-    title: "Email",
-    jsonSchema: { format: "email", minLength: 6, /* a@b.xx */ maxLength: 998 },
-  }),
-);
-
-export class UserEmail extends Model.Class<UserEmail>("UserEmail")({
-  id: Model.Generated(S.UUID),
-  user_id: S.UUID,
-  email: S.String,
-  is_verified: S.Boolean,
-  is_primary: S.Boolean,
-  created_at: Model.Generated(S.Date),
-  updated_at: Model.Generated(S.Date),
-}) {}
-
-// Email management errors
-export class EmailAlreadyTakenError extends Data.TaggedError(
-  "EmailAlreadyTaken",
-)<{
-  readonly message: string;
-  readonly email: string;
-}> {}
-
-export class CannotDeleteLastEmailError extends Data.TaggedError(
-  "CannotDeleteLastEmail",
-)<{
-  readonly message: string;
-}> {}
-
-export class EmailNotOwnedError extends Data.TaggedError("EmailNotOwned")<{
-  readonly message: string;
-  readonly emailId: string;
-}> {}
-
-export class EmailNotVerifiedError extends Data.TaggedError(
-  "EmailNotVerified",
-)<{
-  readonly message: string;
-  readonly emailId: string;
-}> {}
-
-export class EmailRepo extends Effect.Service<EmailRepo>()("User/Email", {
+export class Email extends Effect.Service<Email>()("User/Email", {
+  accessors: true,
   effect: Effect.gen(function* () {
-    const db = yield* PgRootDB;
     return {
       addEmail: ({ email }: { email: string }) =>
-        db
-          .insertInto("app_public.user_emails")
-          .values({ email })
-          .returningAll()
-          .pipe(
-            Effect.mapError((error) => {
-              if (
-                error._tag === "SqlError" &&
-                "code" in error &&
-                error.code === "EMTKN"
-              ) {
-                return new EmailAlreadyTakenError({
-                  message:
-                    "An account using that email address has already been created",
-                  email,
-                });
-              }
-              return error;
-            }),
-          ),
+        Effect.gen(function* () {
+          const db = yield* CurrentDb;
+          return yield* db
+            .insertInto("app_public.user_emails")
+            .values({ email })
+            .returningAll()
+            .pipe(
+              Effect.head,
+              Effect.mapError(
+                mapDbErrors({
+                  EMTKN: (msg) => new EmailAlreadyTaken({ message: msg }),
+                }),
+              ),
+              Effect.mapError((error) =>
+                error._tag === "NoSuchElementException"
+                  ? new InternalError({ message: "Failed to add email" })
+                  : error,
+              ),
+              catchSql,
+            );
+        }),
 
       removeEmail: ({ emailId }: { emailId: string }) =>
-        db
-          .deleteFrom("app_public.user_emails")
-          .where("id", "=", emailId)
-          .pipe(
-            Effect.mapError((error) => {
-              if (
-                error._tag === "SqlError" &&
-                "code" in error &&
-                error.code === "CDLEA"
-              ) {
-                return new CannotDeleteLastEmailError({
-                  message:
-                    "You must have at least one (verified) email address",
-                });
-              }
-              return error;
-            }),
-          ),
+        Effect.gen(function* () {
+          const db = yield* CurrentDb;
+          return yield* db
+            .deleteFrom("app_public.user_emails")
+            .where("id", "=", emailId)
+            .pipe(
+              Effect.head,
+              Effect.map((first) => first.numDeletedRows > 0),
+              Effect.mapError(
+                mapDbErrors({
+                  CDLEA: (msg) => new CannotDeleteLastEmail({ message: msg }),
+                }),
+              ),
+              Effect.mapError((error) =>
+                error._tag === "NoSuchElementException"
+                  ? new InternalError({ message: "Failed to remove email" })
+                  : error,
+              ),
+              catchSql,
+            );
+        }),
 
       verifyEmail: ({ emailId, token }: { emailId: string; token: string }) =>
-        db
-          .selectFrom((eb) =>
-            eb
-              .fn<{
-                verify_email: boolean | null;
-              }>("app_public.verify_email", [
-                sql`${emailId}::uuid`,
-                eb.val(token),
-              ])
-              .as("verify_email"),
-          )
-          .selectAll(),
+        Effect.gen(function* () {
+          const db = yield* CurrentDb;
+          return yield* db
+            .selectFrom((eb) =>
+              eb
+                .fn<{
+                  verify_email: boolean | null;
+                }>("app_public.verify_email", [sql`${emailId}::uuid`, eb.val(token)])
+                .as("verify_email"),
+            )
+            .selectAll()
+            .pipe(
+              Effect.head,
+              Effect.map((first) => Boolean(first.verify_email)),
+              catchSql,
+              Effect.mapError((error) =>
+                error._tag === "NoSuchElementException"
+                  ? new InternalError({ message: "Email verification failed" })
+                  : error,
+              ),
+            );
+        }),
 
       resendVerificationEmail: ({ emailId }: { emailId: string }) =>
-        db
-          .selectFrom((eb) =>
-            eb
-              .fn<{
-                resend_email_verification_code: boolean;
-              }>("app_public.resend_email_verification_code", [
-                sql`${emailId}::uuid`,
-              ])
-              .as("result"),
-          )
-          .selectAll(),
+        Effect.gen(function* () {
+          const db = yield* CurrentDb;
+          return yield* db
+            .selectFrom((eb) =>
+              eb
+                .fn<{
+                  resend_email_verification_code: boolean;
+                }>("app_public.resend_email_verification_code", [sql`${emailId}::uuid`])
+                .as("result"),
+            )
+            .selectAll()
+            .pipe(
+              Effect.head,
+              Effect.map((first) => first.resend_email_verification_code),
+              catchSql,
+              Effect.mapError((error) =>
+                error._tag === "NoSuchElementException"
+                  ? new InternalError({ message: "Failed to resend verification" })
+                  : error,
+              ),
+            );
+        }),
 
       makeEmailPrimary: ({ emailId }: { emailId: string }) =>
-        db
-          .selectFrom((eb) =>
-            eb
-              .fn<
-                Selectable<AppPublicUserEmails>
-              >("app_public.make_email_primary", [sql`${emailId}::uuid`])
-              .as("result"),
-          )
-          .selectAll()
-          .pipe(
-            Effect.mapError((error) => {
-              if (error._tag === "SqlError" && "code" in error) {
-                switch (error.code) {
-                  case "DNIED":
-                    return new EmailNotOwnedError({
-                      message: "That's not your email",
-                      emailId,
-                    });
-
-                  case "VRFY1":
-                    return new EmailNotVerifiedError({
-                      message: "You may not make an unverified email primary",
-                      emailId,
-                    });
-                }
-              }
-              return error;
-            }),
-          ),
-    } as const;
+        Effect.gen(function* () {
+          const db = yield* CurrentDb;
+          return yield* db
+            .selectFrom((eb) =>
+              eb
+                .fn<Selectable<AppPublicUserEmails>>("app_public.make_email_primary", [
+                  sql`${emailId}::uuid`,
+                ])
+                .as("result"),
+            )
+            .selectAll()
+            .pipe(
+              Effect.head,
+              Effect.mapError(
+                mapDbErrors({
+                  DNIED: (msg) => new EmailNotOwned({ message: msg }),
+                  VRFY1: (msg) => new EmailNotVerified({ message: msg }),
+                }),
+              ),
+              Effect.mapError((error) =>
+                error._tag === "NoSuchElementException"
+                  ? new InternalError({ message: "Failed to make email primary" })
+                  : error,
+              ),
+              catchSql,
+            );
+        }),
+    };
   }),
 }) {
   // static Test = makeTestLayer(EmailRepo)({});
-  static Live = EmailRepo.Default;
+  static Live = Email.Default;
 }
