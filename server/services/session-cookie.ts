@@ -1,6 +1,6 @@
 import { Cookies, HttpApp, HttpServerResponse } from '@effect/platform'
 import { HttpServerRequest } from '@effect/platform/HttpServerRequest'
-import { getRequestHeader, setResponseHeader } from '@tanstack/react-start/server'
+import { getRequestHeader, getResponse } from '@tanstack/react-start/server'
 import { Config, Effect, Layer } from 'effect'
 
 import { SessionCookie, SessionCookieHttp } from '../../shared/sessionCookie.js'
@@ -21,6 +21,19 @@ const sessionCookiePolicy = Effect.gen(function* () {
 		maxAge: '30 days' as const,
 	}
 })
+
+/**
+ * Append Set-Cookie strings onto a captured Start response. Must not call any
+ * Start ambient helper — Effect fibers do not preserve AsyncLocalStorage.
+ */
+const appendSetCookie = (
+	response: ReturnType<typeof getResponse>,
+	values: ReadonlyArray<string>,
+) => {
+	for (const value of values) {
+		response.headers.append('set-cookie', value)
+	}
+}
 
 /**
  * Per-request SessionCookie from HttpServerRequest; write/clear attach cookies
@@ -62,6 +75,10 @@ export const SessionCookieHttpLive = Layer.effect(
  * SessionCookie for TanStack Start server functions / route handlers. Reads the
  * incoming Cookie header and writes Set-Cookie onto the Start response using
  * the same policy as the HTTP adapter.
+ *
+ * Capture getRequestHeader / getResponse while the layer builds (still inside
+ * the request's AsyncLocalStorage). write/clear only mutate that held handle —
+ * never call a Start ambient helper from an Effect fiber after await.
  */
 export const SessionCookieStartLive = Layer.effect(
 	SessionCookie,
@@ -70,6 +87,7 @@ export const SessionCookieStartLive = Layer.effect(
 		const policy = yield* sessionCookiePolicy
 		const { maxAge: _maxAge, ...expireOptions } = policy
 		const header = getRequestHeader('cookie')
+		const response = getResponse()
 		const signed = header
 			? (Cookies.parseHeader(header)[SESSION_COOKIE_NAME] ?? null)
 			: null
@@ -78,8 +96,8 @@ export const SessionCookieStartLive = Layer.effect(
 			read: Effect.succeed(signed),
 			write: (sessionId) =>
 				Effect.sync(() => {
-					setResponseHeader(
-						'set-cookie',
+					appendSetCookie(
+						response,
 						Cookies.toSetCookieHeaders(
 							Cookies.setCookie(
 								Cookies.empty,
@@ -93,8 +111,8 @@ export const SessionCookieStartLive = Layer.effect(
 					)
 				}),
 			clear: Effect.sync(() => {
-				setResponseHeader(
-					'set-cookie',
+				appendSetCookie(
+					response,
 					Cookies.toSetCookieHeaders(
 						Cookies.setCookie(
 							Cookies.empty,
