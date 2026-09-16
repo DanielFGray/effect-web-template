@@ -3,6 +3,7 @@ import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect, Schema } from 'effect'
 import { useState } from 'react'
 
+import { Users } from '../../server/services/users.js'
 import { formConstraints } from '../../shared/formConstraints.gen.js'
 import { ForgotPasswordPayload } from '../../shared/payloads.js'
 import {
@@ -11,19 +12,19 @@ import {
 	formResultFromParseError,
 	type FormResult,
 } from '../components.js'
-import { callApi } from '../lib/api.server.js'
 import {
 	type ActionResult,
 	decodeFormAction,
 	type FormAction,
 	formDataRecord,
 } from '../lib/formAction.js'
+import { runServer } from '../lib/runtime.server.js'
 
 const performForgot = (
 	payload: typeof ForgotPasswordPayload.Type,
 ): Promise<ActionResult> =>
-	callApi((api) =>
-		api.users.forgotPassword({ payload }).pipe(
+	runServer(
+		Users.forgotPassword(payload).pipe(
 			Effect.map((): ActionResult => ({ ok: true, data: null })),
 			Effect.catchAll((err) =>
 				Effect.succeed({

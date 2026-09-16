@@ -8,6 +8,8 @@ import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
 import { useState } from 'react'
 
+import { withAuthContext } from '../../server/db.js'
+import { Posts } from '../../server/services/posts.js'
 import {
 	Form,
 	Spinner,
@@ -15,7 +17,7 @@ import {
 	formResultFromError,
 	type FormResult,
 } from '../components.js'
-import { callApi } from '../lib/api.server.js'
+import { runServer } from '../lib/runtime.server.js'
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: FormResult }
 
@@ -27,7 +29,7 @@ type FeedPost = {
 }
 
 const getPosts = createServerFn({ method: 'GET' }).handler(async () => {
-	const posts = await callApi((api) => api.posts.list({ urlParams: {} }))
+	const posts = await runServer(Posts.listBy({}).pipe(withAuthContext))
 	return posts.map((post): FeedPost => ({
 		id: String(post.id),
 		body: post.body,
@@ -39,8 +41,9 @@ const getPosts = createServerFn({ method: 'GET' }).handler(async () => {
 const createPostFn = createServerFn({ method: 'POST' })
 	.validator((data: { body: string; privacy: 'public' | 'private' | 'secret' }) => data)
 	.handler(({ data }): Promise<ActionResult<{ id: string }>> =>
-		callApi((api) =>
-			api.posts.create({ payload: data }).pipe(
+		runServer(
+			Posts.insert(data).pipe(
+				withAuthContext,
 				Effect.map((created): ActionResult<{ id: string }> => ({
 					ok: true,
 					data: { id: String(created.id) },

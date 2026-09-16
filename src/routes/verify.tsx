@@ -3,36 +3,34 @@ import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
 import { useEffect, useState } from 'react'
 
+import { withAuthContext } from '../../server/db.js'
+import { Email } from '../../server/services/email.js'
 import { Form, formResultFromError, type FormResult } from '../components.js'
-import { callApi } from '../lib/api.server.js'
+import { runServer } from '../lib/runtime.server.js'
 
 type ActionResult = { ok: true; data: null } | { ok: false; error: FormResult }
 
 const verifyFn = createServerFn({ method: 'POST' })
 	.validator((data: { id: string; token: string }) => data)
 	.handler(({ data }): Promise<ActionResult> =>
-		callApi((api) =>
-			api.email
-				.verifyEmail({
-					path: { id: data.id },
-					payload: { token: data.token },
-				})
-				.pipe(
-					Effect.map((verified): ActionResult =>
-						verified
-							? { ok: true, data: null }
-							: {
-									ok: false,
-									error: { formErrors: ['Verification failed'] },
-								},
-					),
-					Effect.catchAll((err) =>
-						Effect.succeed({
-							ok: false as const,
-							error: formResultFromError(err),
-						}),
-					),
+		runServer(
+			Email.verifyEmail({ emailId: data.id, token: data.token }).pipe(
+				withAuthContext,
+				Effect.map((verified): ActionResult =>
+					verified
+						? { ok: true, data: null }
+						: {
+								ok: false,
+								error: { formErrors: ['Verification failed'] },
+							},
 				),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
 		),
 	)
 

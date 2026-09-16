@@ -8,12 +8,13 @@ import {
 import { createServerFn } from '@tanstack/react-start'
 import type { ReactNode } from 'react'
 
-import { callApi } from '../lib/api.server.js'
+import { currentUser } from '../../server/auth.js'
+import { runServer } from '../lib/runtime.server.js'
 
 import '../styles.css'
 
 const getCurrentUser = createServerFn({ method: 'GET' }).handler(() =>
-	callApi((api) => api.users.me()),
+	runServer(currentUser),
 )
 
 export const Route = createRootRoute({

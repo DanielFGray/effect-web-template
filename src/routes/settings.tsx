@@ -9,6 +9,9 @@ import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect, Schema } from 'effect'
 import { useState } from 'react'
 
+import { withAuthContext } from '../../server/db.js'
+import { Email } from '../../server/services/email.js'
+import { Users } from '../../server/services/users.js'
 import { formConstraints } from '../../shared/formConstraints.gen.js'
 import {
 	AddEmailPayload,
@@ -23,7 +26,7 @@ import {
 	formResultFromParseError,
 	type FormResult,
 } from '../components.js'
-import { callApi } from '../lib/api.server.js'
+import { runServer } from '../lib/runtime.server.js'
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: FormResult }
 
@@ -36,7 +39,7 @@ type EmailRowData = {
 }
 
 const getEmails = createServerFn({ method: 'GET' }).handler(async () => {
-	const emails = await callApi((api) => api.email.list())
+	const emails = await runServer(Email.listMine().pipe(withAuthContext))
 	return emails.map((email): EmailRowData => ({
 		id: email.id,
 		email: email.email,
@@ -59,8 +62,9 @@ const updateProfileFn = createServerFn({ method: 'POST' })
 		}) => data,
 	)
 	.handler(({ data }): Promise<ActionResult> =>
-		callApi((api) =>
-			api.users.updateProfile({ payload: data }).pipe(
+		runServer(
+			Users.updateProfile(data).pipe(
+				withAuthContext,
 				Effect.as({ ok: true as const, data: null }),
 				Effect.catchAll((err) =>
 					Effect.succeed({
@@ -75,8 +79,9 @@ const updateProfileFn = createServerFn({ method: 'POST' })
 const changePasswordFn = createServerFn({ method: 'POST' })
 	.validator((data: { oldPassword: string; newPassword: string }) => data)
 	.handler(({ data }): Promise<ActionResult> =>
-		callApi((api) =>
-			api.users.changePassword({ payload: data }).pipe(
+		runServer(
+			Users.changePassword(data).pipe(
+				withAuthContext,
 				Effect.as({ ok: true as const, data: null }),
 				Effect.catchAll((err) =>
 					Effect.succeed({
@@ -91,8 +96,9 @@ const changePasswordFn = createServerFn({ method: 'POST' })
 const addEmailFn = createServerFn({ method: 'POST' })
 	.validator((data: { email: string }) => data)
 	.handler(({ data }): Promise<ActionResult> =>
-		callApi((api) =>
-			api.email.addEmail({ payload: data }).pipe(
+		runServer(
+			Email.addEmail(data).pipe(
+				withAuthContext,
 				Effect.as({ ok: true as const, data: null }),
 				Effect.catchAll((err) =>
 					Effect.succeed({
@@ -107,8 +113,9 @@ const addEmailFn = createServerFn({ method: 'POST' })
 const resendVerificationFn = createServerFn({ method: 'POST' })
 	.validator((data: { id: string }) => data)
 	.handler(({ data }): Promise<ActionResult> =>
-		callApi((api) =>
-			api.email.resendVerification({ path: { id: data.id } }).pipe(
+		runServer(
+			Email.resendVerificationEmail({ emailId: data.id }).pipe(
+				withAuthContext,
 				Effect.as({ ok: true as const, data: null }),
 				Effect.catchAll((err) =>
 					Effect.succeed({
@@ -123,8 +130,9 @@ const resendVerificationFn = createServerFn({ method: 'POST' })
 const removeEmailFn = createServerFn({ method: 'POST' })
 	.validator((data: { id: string }) => data)
 	.handler(({ data }): Promise<ActionResult> =>
-		callApi((api) =>
-			api.email.removeEmail({ path: { id: data.id } }).pipe(
+		runServer(
+			Email.removeEmail({ emailId: data.id }).pipe(
+				withAuthContext,
 				Effect.as({ ok: true as const, data: null }),
 				Effect.catchAll((err) =>
 					Effect.succeed({
@@ -139,8 +147,9 @@ const removeEmailFn = createServerFn({ method: 'POST' })
 const makeEmailPrimaryFn = createServerFn({ method: 'POST' })
 	.validator((data: { id: string }) => data)
 	.handler(({ data }): Promise<ActionResult> =>
-		callApi((api) =>
-			api.email.makeEmailPrimary({ path: { id: data.id } }).pipe(
+		runServer(
+			Email.makeEmailPrimary({ emailId: data.id }).pipe(
+				withAuthContext,
 				Effect.as({ ok: true as const, data: null }),
 				Effect.catchAll((err) =>
 					Effect.succeed({
@@ -154,8 +163,9 @@ const makeEmailPrimaryFn = createServerFn({ method: 'POST' })
 
 const requestDeletionFn = createServerFn({ method: 'POST' }).handler(
 	(): Promise<ActionResult> =>
-		callApi((api) =>
-			api.users.requestDeletion().pipe(
+		runServer(
+			Users.requestAccountDeletion().pipe(
+				withAuthContext,
 				Effect.as({ ok: true as const, data: null }),
 				Effect.catchAll((err) =>
 					Effect.succeed({
@@ -170,8 +180,9 @@ const requestDeletionFn = createServerFn({ method: 'POST' }).handler(
 const confirmDeletionFn = createServerFn({ method: 'POST' })
 	.validator((data: { token: string }) => data)
 	.handler(({ data }): Promise<ActionResult<{ confirm_account_deletion: boolean }>> =>
-		callApi((api) =>
-			api.users.confirmDeletion({ payload: data }).pipe(
+		runServer(
+			Users.confirmAccountDeletion(data).pipe(
+				withAuthContext,
 				Effect.map((result): ActionResult<{ confirm_account_deletion: boolean }> => ({
 					ok: true,
 					data: result,

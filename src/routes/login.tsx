@@ -9,6 +9,7 @@ import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect, Schema } from 'effect'
 import { useState } from 'react'
 
+import { loginAndCreateSession } from '../../server/auth.js'
 import { formConstraints } from '../../shared/formConstraints.gen.js'
 import { LoginPayload } from '../../shared/payloads.js'
 import {
@@ -17,13 +18,13 @@ import {
 	formResultFromParseError,
 	type FormResult,
 } from '../components.js'
-import { callApi } from '../lib/api.server.js'
 import {
 	type ActionResult,
 	decodeFormAction,
 	type FormAction,
 	formDataRecord,
 } from '../lib/formAction.js'
+import { runServer } from '../lib/runtime.server.js'
 
 /**
  * The one implementation of logging in. Both entry points below call it: the
@@ -32,8 +33,8 @@ import {
  * in how the payload arrived on the wire.
  */
 const performLogin = (payload: typeof LoginPayload.Type): Promise<ActionResult> =>
-	callApi((api) =>
-		api.users.login({ payload }).pipe(
+	runServer(
+		loginAndCreateSession(payload).pipe(
 			Effect.map((): ActionResult => ({ ok: true, data: null })),
 			Effect.catchAll((err) =>
 				Effect.succeed({
@@ -59,7 +60,7 @@ export const Route = createFileRoute('/login')({
 			// renders this route's component — the failure path is a re-render of the
 			// page, not a redirect. Only a route that has a component may do this.
 			// The whole `server` property is stripped from the client bundle, so
-			// importing callApi here does not reach the browser.
+			// importing runServer here does not reach the browser.
 			POST: async ({ request, next }) => {
 				const record = formDataRecord(await request.formData())
 				const values = { id: record.id ?? '' }

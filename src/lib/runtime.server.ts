@@ -12,12 +12,16 @@ import { CookieSigner } from '../../server/services/cookie-signer.js'
 import { Email } from '../../server/services/email.js'
 import { Organizations } from '../../server/services/organizations.js'
 import { Posts } from '../../server/services/posts.js'
-import { SessionCookieHttpLive } from '../../server/services/session-cookie.js'
+import {
+	SessionCookieHttpLive,
+	SessionCookieStartLive,
+} from '../../server/services/session-cookie.js'
 import { Sessions } from '../../server/services/session.js'
 import { Users } from '../../server/services/users.js'
 import { ContractWithTesting, TestingApiLive } from '../../server/testingApi.js'
 import { TracingLayer } from '../../server/tracing.js'
 import { Contract } from '../../shared/httpApi.js'
+import { SessionCookie } from '../../shared/sessionCookie.js'
 
 /**
  * Process-scoped domain + DB layers. Shared with the HTTP handler through the
@@ -30,9 +34,9 @@ const AppLayer = Layer.mergeAll(
 	Organizations.Default,
 	Posts.Default,
 ).pipe(
-	Layer.provide(CookieSigner.Live),
-	Layer.provide(PgRootDB.Live),
-	Layer.provide(PgAuthDB.Live),
+	Layer.provideMerge(CookieSigner.Live),
+	Layer.provideMerge(PgRootDB.Live),
+	Layer.provideMerge(PgAuthDB.Live),
 )
 
 const PlatformLive = Layer.mergeAll(
@@ -98,11 +102,12 @@ globalForEffect.__effectWebRuntime = {
 
 export const handler = (request: Request): Promise<Response> => web.handler(request)
 
-/** Run a domain Effect against the process ManagedRuntime (shared memoMap / pools). */
+type AppContext = ManagedRuntime.ManagedRuntime.Context<typeof serverRuntime>
+
+/**
+ * Run a domain Effect against the process ManagedRuntime (shared memoMap / pools).
+ * Provides SessionCookie from the current Start request/response.
+ */
 export const runServer = <A, E>(
-	effect: Effect.Effect<
-		A,
-		E,
-		ManagedRuntime.ManagedRuntime.Context<typeof serverRuntime>
-	>,
-): Promise<A> => serverRuntime.runPromise(effect)
+	effect: Effect.Effect<A, E, AppContext | SessionCookie>,
+): Promise<A> => serverRuntime.runPromise(Effect.provide(effect, SessionCookieStartLive))
