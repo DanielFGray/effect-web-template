@@ -1,10 +1,26 @@
 import { Effect, Config } from "effect";
 import { HttpApiBuilder, HttpServerResponse } from "@effect/platform";
+import { HttpServerRequest } from "@effect/platform/HttpServerRequest";
 import { Users } from "../services/users.js";
 import { Sessions } from "../services/session.js";
 import { CookieSigner } from "../services/cookie-signer.js";
 import { withAuthContext } from "../db.js";
 import { Contract } from "../../shared/httpApi.js";
+
+const whoami = Effect.gen(function* () {
+  const req = yield* HttpServerRequest;
+  const signedSessionCookie = req.cookies["session"];
+  if (!signedSessionCookie) return null;
+
+  const sessionId = yield* CookieSigner.verify(signedSessionCookie).pipe(
+    Effect.catchTag("InvalidCookieSignature", () => Effect.succeed(null)),
+  );
+  if (!sessionId) return null;
+
+  return yield* Sessions.validateSession(sessionId).pipe(
+    Effect.catchTag("SessionNotFound", () => Effect.succeed(null)),
+  );
+});
 
 const withSessionCookie = Effect.fnUntraced(function* (
   sessionId: string,
@@ -22,6 +38,7 @@ const withSessionCookie = Effect.fnUntraced(function* (
 
 export const UsersApiGroupLive = HttpApiBuilder.group(Contract, "users", (handlers) =>
   handlers
+    .handle("me", () => whoami)
     .handle(
       "register",
       Effect.fnUntraced(function* ({ payload }) {
@@ -45,7 +62,7 @@ export const UsersApiGroupLive = HttpApiBuilder.group(Contract, "users", (handle
       }),
     )
     .handle("resetPassword", ({ payload }) => Users.resetPassword(payload))
-    .handle("logout", () => Users.logout())
+    .handle("logout", () => Users.logout().pipe(withAuthContext))
     .handle("requestDeletion", () => Users.requestAccountDeletion().pipe(withAuthContext))
     .handle("confirmDeletion", ({ payload }) =>
       Users.confirmAccountDeletion(payload).pipe(withAuthContext),

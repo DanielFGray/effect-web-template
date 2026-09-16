@@ -35,9 +35,6 @@ export class Users extends Effect.Service<Users>()("User/Accounts", {
           // @ts-expect-error: Kysely doesn't seem to allow referencing tables directly
           .where((eb) => eb.not(eb(eb.ref("u"), "is", null))),
 
-      logout: () =>
-        rootDb.selectNoFrom((eb) => [eb.fn<void>("app_public.logout", []).as("logout")]),
-
       reallyCreateUser: (payload: {
         username: string;
         password: string;
@@ -135,13 +132,17 @@ export class Users extends Effect.Service<Users>()("User/Accounts", {
     return {
       queries,
 
-      logout: Effect.fn("db:user:logout")(
-        queries.logout,
-        Effect.head,
-        Effect.catchTag("NoSuchElementException", Effect.die),
-        Effect.map((x) => x.logout),
-        catchSql,
-      ),
+      logout: Effect.fnUntraced(function* () {
+        const db = yield* KyselyDB;
+        return yield* db
+          .selectNoFrom((eb) => [eb.fn<void>("app_public.logout", []).as("logout")])
+          .pipe(
+            Effect.head,
+            Effect.catchTag("NoSuchElementException", Effect.die),
+            Effect.map((x) => x.logout),
+            catchSql,
+          );
+      }),
 
       login: Effect.fn("db:user:login")(
         queries.login,

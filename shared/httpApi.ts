@@ -12,6 +12,7 @@ import {
   UserEmail,
   Password,
   EmailSchema,
+  AuthenticatedUser,
 } from "./schemas.js";
 import {
   InternalError,
@@ -60,6 +61,7 @@ const PostsGroup = HttpApiGroup.make("posts")
   );
 
 const UsersGroup = HttpApiGroup.make("users")
+  .add(HttpApiEndpoint.get("me", "/auth/me").addSuccess(S.NullOr(AuthenticatedUser)))
   .add(
     HttpApiEndpoint.post("register", "/auth/register")
       .setPayload(
