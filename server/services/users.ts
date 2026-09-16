@@ -154,16 +154,17 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 			login: Effect.fn('db:user:login')(
 				queries.login,
 				Effect.head,
+				// app_private.login returns no row for bad credentials (does not raise CREDS).
+				Effect.catchTag('NoSuchElementException', () =>
+					Effect.fail(
+						new InvalidCredentials({ message: 'invalid username or password' }),
+					),
+				),
 				Effect.mapError(
 					mapDbErrors({
 						CREDS: (msg) => new InvalidCredentials({ message: msg }),
 						LOCKD: (msg) => new AccountLocked({ message: msg }),
 					}),
-				),
-				Effect.mapError((error) =>
-					error._tag === 'NoSuchElementException'
-						? new InternalError({ message: 'Login failed' })
-						: error,
 				),
 				catchSql,
 			),

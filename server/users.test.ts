@@ -8,6 +8,7 @@ import { FetchHttpClient } from '@effect/platform'
 import { suite, expect, it } from '@effect/vitest'
 import { Effect, Ref, Option, Config } from 'effect'
 
+import { InvalidCredentials } from '../shared/errors.js'
 import { User } from '../shared/schemas.js'
 
 // Test layer that provides HTTP client for testing against running server
@@ -227,6 +228,57 @@ suite('user registration HTTP flow', () => {
 
 			// Should fail with validation error
 			expect(result._tag).toBe('Left')
+		}).pipe(Effect.provide(TestHttpClientLive)),
+	)
+
+	it.live('wrong password for existing user returns 401 InvalidCredentials', () =>
+		Effect.gen(function* () {
+			const client = yield* HttpClient.HttpClient
+			const username = `badpass_${runId}`
+
+			const registerResponse = yield* HttpClientRequest.post(
+				`${yield* baseUrl}/auth/register`,
+			).pipe(
+				HttpClientRequest.bodyJson({
+					username,
+					password: 'password123',
+					email: `badpass_${runId}@example.com`,
+				}),
+				Effect.flatMap(client.execute),
+			)
+			expect(registerResponse.status).toBe(201)
+
+			const response = yield* HttpClientRequest.post(`${yield* baseUrl}/auth/login`).pipe(
+				HttpClientRequest.bodyJson({
+					id: username,
+					password: 'wrong-password',
+				}),
+				Effect.flatMap(client.execute),
+			)
+
+			expect(response.status).toBe(401)
+			const error = yield* HttpClientResponse.schemaBodyJson(InvalidCredentials)(response)
+			expect(error._tag).toBe('InvalidCredentials')
+			expect(error.message).toBe('invalid username or password')
+		}).pipe(Effect.provide(TestHttpClientLive)),
+	)
+
+	it.live('unknown username returns the same 401 InvalidCredentials', () =>
+		Effect.gen(function* () {
+			const client = yield* HttpClient.HttpClient
+
+			const response = yield* HttpClientRequest.post(`${yield* baseUrl}/auth/login`).pipe(
+				HttpClientRequest.bodyJson({
+					id: `nobody_${runId}`,
+					password: 'password123',
+				}),
+				Effect.flatMap(client.execute),
+			)
+
+			expect(response.status).toBe(401)
+			const error = yield* HttpClientResponse.schemaBodyJson(InvalidCredentials)(response)
+			expect(error._tag).toBe('InvalidCredentials')
+			expect(error.message).toBe('invalid username or password')
 		}).pipe(Effect.provide(TestHttpClientLive)),
 	)
 })
