@@ -16,11 +16,8 @@ import {
 
 const TestHttpClientLive = FetchHttpClient.layer
 
-const baseUrl = Config.string('PORT').pipe(
-	Effect.map((port) => `http://localhost:${port}/api`),
-)
-const rootUrl = Config.string('PORT').pipe(
-	Effect.map((port) => `http://localhost:${port}`),
+const baseUrl = Config.string('VITE_ROOT_URL').pipe(
+	Effect.map((url) => `${new URL(url).origin}/api`),
 )
 
 const runId = Math.random().toString(36).slice(2, 8)
@@ -111,7 +108,7 @@ suite('organizations HTTP flow', () => {
 
 			// invite_to_organization raises VRFY2 unless the invitee is verified
 			const verifyB = yield* client.get(
-				`${yield* rootUrl}/verifyUser?username=${encodeURIComponent(usernameB)}`,
+				`${yield* baseUrl}/verifyUser?username=${encodeURIComponent(usernameB)}`,
 			)
 			expect(verifyB.status).toBe(200)
 

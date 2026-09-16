@@ -75,7 +75,7 @@ export class KyselyDB extends Context.Tag('CurrentDb')<KyselyDB, EffectKysely>()
 	static Live = Layer.effect(this, PgKysely.make<DB>())
 }
 
-export const withAuthContext = <A, E>(effect: Effect.Effect<A, E, any>) =>
+export const withAuthContext = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 	Effect.gen(function* () {
 		const db = yield* PgAuthDB
 		const databaseVisitor = yield* Config.string('DATABASE_VISITOR').pipe(

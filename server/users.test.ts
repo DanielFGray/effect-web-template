@@ -14,8 +14,8 @@ import { User } from '../shared/schemas.js'
 // Test layer that provides HTTP client for testing against running server
 const TestHttpClientLive = FetchHttpClient.layer
 
-const baseUrl = Config.string('PORT').pipe(
-	Effect.map((port) => `http://localhost:${port}/api`),
+const baseUrl = Config.string('VITE_ROOT_URL').pipe(
+	Effect.map((url) => `${new URL(url).origin}/api`),
 )
 
 // Unique per test run so re-running against a live, unreset database never

@@ -14,11 +14,11 @@ import { Post, PostWithDetails } from './services/posts.js'
 
 const TestHttpClientLive = FetchHttpClient.layer
 
-const baseUrl = Config.string('PORT').pipe(
-	Effect.map((port) => `http://localhost:${port}/api`),
+const baseUrl = Config.string('VITE_ROOT_URL').pipe(
+	Effect.map((url) => `${new URL(url).origin}/api`),
 )
-const origin = Config.string('PORT').pipe(
-	Effect.map((port) => `http://localhost:${port}`),
+const origin = Config.string('VITE_ROOT_URL').pipe(
+	Effect.map((url) => new URL(url).origin),
 )
 
 const CreatePostResponse = Post.select.pick('id')

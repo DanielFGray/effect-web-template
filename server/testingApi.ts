@@ -2,6 +2,7 @@ import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from '@effect/
 import { Config, Effect, Layer, Schema as S } from 'effect'
 
 import { InternalError } from '../shared/errors.js'
+import { Contract } from '../shared/httpApi.js'
 import { PgRootDB } from './db.js'
 import { catchSql } from './db.js'
 import { Users } from './services/users.js'
@@ -59,8 +60,11 @@ const TestingApiGroup = HttpApiGroup.make('TestingApi')
 
 export const TestingApi = HttpApi.make('TestingApi').add(TestingApiGroup)
 
+/** Contract with TestingApi under the same /api prefix the Start catch-all serves. */
+export const ContractWithTesting = Contract.addHttpApi(TestingApi.prefix('/api'))
+
 export const TestingApiGroupLive = HttpApiBuilder.group(
-	TestingApi,
+	ContractWithTesting,
 	'TestingApi',
 	(handlers) =>
 		Effect.gen(function* () {
