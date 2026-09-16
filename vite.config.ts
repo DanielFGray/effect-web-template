@@ -32,9 +32,11 @@ export default mergeConfig(
 		],
 		build: {
 			target: 'esnext',
-			outDir: '../dist/client',
+			// Relative to this config's directory. Anything starting `../` lands
+			// outside the package, where the emitted server entry cannot resolve
+			// node_modules and nothing gitignores it.
+			outDir: 'dist',
 		},
-		// root: "./src",
 		server: {
 			port: Number(rootUrl.port),
 			host: rootUrl.hostname,
