@@ -40,7 +40,7 @@ export default mergeConfig(
       port: Number(rootUrl.port),
       host: rootUrl.hostname,
       proxy: {
-        "/rpc": {
+        "/api": {
           target: `http://localhost:${process.env.PORT}`,
           changeOrigin: true,
         },

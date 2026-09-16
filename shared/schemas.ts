@@ -58,6 +58,41 @@ export class UserEmail extends Model.Class<UserEmail>("UserEmail")({
   updated_at: Model.Generated(S.Date),
 }) {}
 
+export class Organization extends Model.Class<Organization>("Organization")({
+  id: Model.Generated(S.UUID),
+  slug: S.NonEmptyTrimmedString,
+  name: S.NonEmptyTrimmedString,
+  created_at: Model.Generated(S.Date),
+}) {}
+
+export class OrganizationMembership extends Model.Class<OrganizationMembership>(
+  "OrganizationMembership",
+)({
+  id: Model.Generated(S.UUID),
+  organization_id: S.UUID,
+  user_id: S.UUID,
+  is_owner: S.Boolean,
+  is_billing_contact: S.Boolean,
+  created_at: Model.Generated(S.Date),
+}) {}
+
+export const OrganizationMember = S.Struct({
+  ...OrganizationMembership.select.fields,
+  user: S.Struct({
+    username: S.NullOr(S.String),
+    avatar_url: S.NullOr(S.String),
+  }),
+});
+
+export class OrganizationInvitation extends Model.Class<OrganizationInvitation>(
+  "OrganizationInvitation",
+)({
+  id: Model.Generated(S.UUID),
+  organization_id: S.UUID,
+  user_id: S.NullOr(S.UUID),
+  email: S.NullOr(S.String),
+}) {}
+
 function isValidPassword(password: unknown) {
   return typeof password === "string" && password.length >= 8;
 }

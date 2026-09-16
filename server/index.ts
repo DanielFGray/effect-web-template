@@ -5,11 +5,13 @@ import { PgAuthDB, PgRootDB } from "./db.js";
 import { PostsApiGroupLive } from "./api/posts.js";
 import { UsersApiGroupLive } from "./api/users.js";
 import { EmailApiGroupLive } from "./api/email.js";
+import { OrganizationsApiGroupLive } from "./api/organizations.js";
 import { Sessions } from "./services/session.js";
 import { CookieSigner } from "./services/cookie-signer.js";
 import { Users } from "./services/users.js";
 import { Posts } from "./services/posts.js";
 import { Email } from "./services/email.js";
+import { Organizations } from "./services/organizations.js";
 import { TracingLayer } from "./tracing.js";
 import { DevToolsLive } from "./devTools.js";
 import { DevTools } from "@effect/experimental";
@@ -20,9 +22,11 @@ const ApiLive = HttpApiBuilder.api(Contract.addHttpApi(TestingApi)).pipe(
   Layer.provide(PostsApiGroupLive),
   Layer.provide(UsersApiGroupLive),
   Layer.provide(EmailApiGroupLive),
+  Layer.provide(OrganizationsApiGroupLive),
   Layer.provide(Posts.Default),
   Layer.provide(Users.Live),
   Layer.provide(Email.Default),
+  Layer.provide(Organizations.Default),
 );
 
 const ServerLive = HttpApiBuilder.serve().pipe(

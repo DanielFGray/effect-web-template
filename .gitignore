@@ -177,3 +177,6 @@ node_modules
 
 # kysely-codegen output, regenerated via `bun db:types`
 generated/
+# Tool output, not source
+.playwright-mcp/
+.tanstack/

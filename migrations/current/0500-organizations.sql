@@ -27,7 +27,6 @@ drop table if exists app_public.organization_invitations;
 drop table if exists app_public.organization_memberships;
 drop table if exists app_public.organizations cascade;
 
---! split: 2010-organizations.sql
 /*
  * Organizations have a name, and a unique identifier we call the "slug" (it's
  * like a user's username). Both of these are updatable.
@@ -45,7 +44,6 @@ grant update(name, slug) on app_public.organizations to :DATABASE_VISITOR;
 
 -- Note we can't define the RLS policies for an organization until we've defined membership of the organization, so RLS policies will come a little later.
 
---! split: 2019-organization_memberships.sql
 /*
  * This table details who is a member of an organization. When someone is
  * invited to an organization they won't have an entry in this table until
@@ -71,7 +69,6 @@ grant select on app_public.organization_memberships to :DATABASE_VISITOR;
 -- We can't define RLS policies on organization_memberships yet because we need
 -- to know if you're invited; so RLS policies will come later.
 
---! split: 2030-organization_invitations.sql
 /*
  * When a user is invited to an organization, a record will be added to this
  * table. Once the invitation is accepted, the record will be deleted. We'll
@@ -92,14 +89,12 @@ alter table app_public.organization_invitations enable row level security;
 
 create index on app_public.organization_invitations(user_id);
 
--- We're not granting any privileges here since we don't need any currently.
--- grant select on app_public.organization_invitations to :DATABASE_VISITOR;
+grant select on app_public.organization_invitations to :DATABASE_VISITOR;
 
 -- Send the user an invitation email to join the organization
 create trigger _500_send_email after insert on app_public.organization_invitations
   for each row execute procedure app_private.tg__add_job('organization_invitations__send_invite');
 
---! split: 2040-create_organization.sql
 /*
  * When a user creates an organization they automatically become the owner and
  * billing contact of that organization.
@@ -119,7 +114,6 @@ begin
 end;
 $$ language plpgsql volatile security definer set search_path = pg_catalog, public, pg_temp;
 
---! split: 2050-invite_to_organization.sql
 /*
  * This function allows you to invite someone to an organization; you either
  * need to know their username (in which case they must already have an
@@ -177,7 +171,6 @@ begin
 end;
 $$ language plpgsql volatile security definer set search_path = pg_catalog, public, pg_temp;
 
---! split: 2060-organization-permissions.sql
 /*
  * Users can see organizations and organization members if they are themselves
  * a member of the same organization, or if they've been invited to that
@@ -218,7 +211,12 @@ create policy update_owner on app_public.organizations for update using (exists(
   and is_owner is true
 ));
 
---! split: 2070-organization_for_invitation.sql
+create policy select_own on app_public.organization_invitations
+  for select using (
+    organization_id in (select app_public.current_user_member_organization_ids())
+    or user_id = app_public.current_user_id()
+  );
+
 /*
  * When you receive an invitation code (but don't yet have an account) you may
  * wish to see the organization before creating an account; this function
@@ -257,7 +255,6 @@ begin
 end;
 $$ language plpgsql stable security definer set search_path = pg_catalog, public, pg_temp;
 
---! split: 2080-accept_invitation_to_organization.sql
 /*
  * This function accepts an invitation to join the organization and adds you to
  * the organization (deleting the invite).  If you were invited by username (or
@@ -284,7 +281,6 @@ begin
 end;
 $$ language plpgsql volatile security definer set search_path = pg_catalog, public, pg_temp;
 
---! split: 2090-remove_from_organization.sql
 /*
  * This function can be used to remove yourself or (if you're the org owner)
  * someone else from an organization. Idempotent - if they're not a member then
@@ -338,7 +334,6 @@ begin
 end;
 $$ language plpgsql volatile security definer set search_path to pg_catalog, public, pg_temp;
 
---! split: 2100-organization-computed-columns.sql
 /*
  * Shortcut telling the client if the current user is the organization owner
  * without having to manually traverse into organization_memberships.
@@ -371,7 +366,6 @@ create function app_public.organizations_current_user_is_billing_contact(
   )
 $$ language sql stable;
 
---! split: 2110-dont-allow-user-delete-when-organization.sql
 /*
  * This trigger/trigger function prevents deleting a user if they're the owner
  * of any organizations (first you must delete the organizations or transfer
@@ -411,7 +405,6 @@ create trigger _500_deletion_organization_checks_and_actions
   when (app_public.current_user_id() is not null)
   execute procedure app_public.tg_users__deletion_organization_checks_and_actions();
 
---! split: 2120-delete_organization.sql
 /*
  * Function to delete an organization; only works if you're the owner.
  */
@@ -429,7 +422,6 @@ begin
 end;
 $$ language plpgsql volatile security definer set search_path to pg_catalog, public, pg_temp;
 
---! split: 2130-transfer_organization_ownership.sql
 /*
  * Allows organization owner to transfer ownership of the organization to
  * another organization member.
@@ -463,7 +455,6 @@ begin
 end;
 $$ language plpgsql volatile security definer set search_path to pg_catalog, public, pg_temp;
 
---! split: 2140-transfer_organization_billing_contact.sql
 /*
  * Allows organization owner to transfer billing contact for the organization
  * to another organization member.

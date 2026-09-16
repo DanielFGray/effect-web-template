@@ -6,12 +6,15 @@ import {
   HttpClientResponse,
   HttpClientRequest,
   FetchHttpClient,
+  HttpApiClient,
 } from "@effect/platform";
 import { Post, PostWithDetails } from "./services/posts.js";
+import { Contract } from "../shared/httpApi.js";
 
 const TestHttpClientLive = FetchHttpClient.layer;
 
-const baseUrl = Config.string("PORT").pipe(Effect.map((port) => `http://localhost:${port}`));
+const baseUrl = Config.string("PORT").pipe(Effect.map((port) => `http://localhost:${port}/api`));
+const origin = Config.string("PORT").pipe(Effect.map((port) => `http://localhost:${port}`));
 
 const CreatePostResponse = Post.select.pick("id");
 
@@ -20,6 +23,32 @@ const CreatePostResponse = Post.select.pick("id");
 const runId = Math.random().toString(36).slice(2, 8);
 
 suite("posts HTTP flow", () => {
+  it.live("typed HttpApiClient create post decodes 201", () =>
+    Effect.gen(function* () {
+      const cookiesRef = yield* Ref.make(Cookies.empty);
+      const api = yield* HttpApiClient.make(Contract, {
+        baseUrl: yield* origin,
+        transformClient: (c) => c.pipe(HttpClient.withCookiesRef(cookiesRef)),
+      });
+
+      yield* api.users.register({
+        payload: {
+          username: `postflow_typed_${runId}`,
+          password: "password123",
+          email: `postflow_typed_${runId}@example.com`,
+        },
+      });
+
+      const created = yield* api.posts.create({
+        payload: {
+          body: "hello from typed client",
+          privacy: "public",
+        },
+      });
+      expect(created.id).toBeDefined();
+    }).pipe(Effect.provide(TestHttpClientLive)),
+  );
+
   it.live("POST /posts creates a post for authenticated user", () =>
     Effect.gen(function* () {
       const client = yield* HttpClient.HttpClient;

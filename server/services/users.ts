@@ -10,6 +10,7 @@ import {
   AccountAlreadyLinked,
   UsernameTaken,
   InternalError,
+  CannotDeleteWhileOwningOrganization,
 } from "../../shared/errors.js";
 import { User } from "../../shared/schemas.js";
 import type { AppPublicUsers } from "../../generated/db.js";
@@ -331,6 +332,12 @@ export class Users extends Effect.Service<Users>()("User/Accounts", {
           .selectAll()
           .pipe(
             Effect.head,
+            Effect.mapError(
+              mapDbErrors({
+                OWNER: (msg) =>
+                  new CannotDeleteWhileOwningOrganization({ message: msg }),
+              }),
+            ),
             catchSql,
             Effect.mapError((error) =>
               error._tag === "NoSuchElementException"

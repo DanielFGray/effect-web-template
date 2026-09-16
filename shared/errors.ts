@@ -64,3 +64,20 @@ export class EmailNotVerified extends S.TaggedError<EmailNotVerified>()(
   "EmailNotVerified",
   { message: S.String },
 ) {}
+
+export class AccessDenied extends S.TaggedError<AccessDenied>()("AccessDenied", {
+  message: S.String,
+}) {}
+
+export class AlreadyMember extends S.TaggedError<AlreadyMember>()("AlreadyMember", {
+  message: S.String,
+}) {}
+
+export class NotFound extends S.TaggedError<NotFound>()("NotFound", {
+  message: S.String,
+}) {}
+
+export class CannotDeleteWhileOwningOrganization extends S.TaggedError<CannotDeleteWhileOwningOrganization>()(
+  "CannotDeleteWhileOwningOrganization",
+  { message: S.String },
+) {}

@@ -13,6 +13,9 @@ import {
   Password,
   EmailSchema,
   AuthenticatedUser,
+  Organization,
+  OrganizationMember,
+  OrganizationInvitation,
 } from "./schemas.js";
 import {
   InternalError,
@@ -27,10 +30,17 @@ import {
   EmailNotOwned,
   EmailNotVerified,
   CannotDeleteLastEmail,
+  AccessDenied,
+  AlreadyMember,
+  NotFound,
+  CannotDeleteWhileOwningOrganization,
 } from "./errors.js";
 
 const idParam = HttpApiSchema.param("id", S.BigInt);
 const uuidParam = HttpApiSchema.param("id", S.UUID);
+const orgIdParam = HttpApiSchema.param("orgId", S.UUID);
+const memberUserIdParam = HttpApiSchema.param("userId", S.UUID);
+const invitationIdParam = HttpApiSchema.param("invitationId", S.UUID);
 
 const PostsGroup = HttpApiGroup.make("posts")
   .add(
@@ -57,7 +67,7 @@ const PostsGroup = HttpApiGroup.make("posts")
   .add(
     HttpApiEndpoint.post("create", "/posts")
       .setPayload(Post.insert)
-      .addSuccess(S.NullOr(Post.select.pick("id")), { status: 201 }),
+      .addSuccess(Post.select.pick("id"), { status: 201 }),
   );
 
 const UsersGroup = HttpApiGroup.make("users")
@@ -99,7 +109,8 @@ const UsersGroup = HttpApiGroup.make("users")
   .add(
     HttpApiEndpoint.post("confirmDeletion", "/auth/confirm-deletion")
       .setPayload(S.Struct({ token: S.NonEmptyTrimmedString }))
-      .addSuccess(S.Struct({ confirm_account_deletion: S.Boolean })),
+      .addSuccess(S.Struct({ confirm_account_deletion: S.Boolean }))
+      .addError(CannotDeleteWhileOwningOrganization, { status: 409 }),
   )
   .add(
     HttpApiEndpoint.post("forgotPassword", "/auth/forgot-password")
@@ -186,8 +197,120 @@ const EmailGroup = HttpApiGroup.make("email")
       .addSuccess(S.Boolean),
   );
 
+const OrganizationsGroup = HttpApiGroup.make("organizations")
+  .add(
+    HttpApiEndpoint.post("create", "/organizations")
+      .setPayload(
+        S.Struct({
+          slug: S.NonEmptyTrimmedString,
+          name: S.NonEmptyTrimmedString,
+        }),
+      )
+      .addSuccess(Organization.select, { status: 201 })
+      .addError(AuthenticationRequired, { status: 401 }),
+  )
+  .add(
+    HttpApiEndpoint.get("list", "/organizations").addSuccess(
+      S.Array(Organization.select),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get("getById")`/organizations/${orgIdParam}`.addSuccess(
+      S.NullOr(Organization.select),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.patch("update")`/organizations/${orgIdParam}`
+      .setPayload(
+        S.partial(
+          S.Struct({
+            slug: S.NonEmptyTrimmedString,
+            name: S.NonEmptyTrimmedString,
+          }),
+        ),
+      )
+      .addSuccess(Organization.select)
+      .addError(AccessDenied, { status: 403 }),
+  )
+  .add(
+    HttpApiEndpoint.del("delete")`/organizations/${orgIdParam}`.addSuccess(
+      S.Void,
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "listMembers",
+    )`/organizations/${orgIdParam}/members`.addSuccess(
+      S.Array(OrganizationMember),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "listInvitations",
+    )`/organizations/${orgIdParam}/invitations`.addSuccess(
+      S.Array(OrganizationInvitation.select),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.del(
+      "removeMember",
+    )`/organizations/${orgIdParam}/members/${memberUserIdParam}`.addSuccess(
+      S.Void,
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("invite")`/organizations/${orgIdParam}/invite`
+      .setPayload(
+        S.Struct({
+          username: S.NullOr(S.NonEmptyTrimmedString),
+          email: S.NullOr(EmailSchema),
+        }),
+      )
+      .addSuccess(S.Void)
+      .addError(AuthenticationRequired, { status: 401 })
+      .addError(AccessDenied, { status: 403 })
+      .addError(AlreadyMember, { status: 409 })
+      .addError(EmailNotVerified, { status: 400 })
+      .addError(NotFound, { status: 404 }),
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "getForInvitation",
+    )`/organizations/invitations/${invitationIdParam}`
+      .setUrlParams(
+        S.partial(S.Struct({ code: S.NonEmptyTrimmedString })),
+      )
+      .addSuccess(Organization.select)
+      .addError(AuthenticationRequired, { status: 401 })
+      .addError(NotFound, { status: 404 })
+      .addError(AccessDenied, { status: 403 }),
+  )
+  .add(
+    HttpApiEndpoint.post(
+      "acceptInvitation",
+    )`/organizations/invitations/${invitationIdParam}/accept`
+      .setPayload(S.Struct({ code: S.NullOr(S.NonEmptyTrimmedString) }))
+      .addSuccess(S.Void),
+  )
+  .add(
+    HttpApiEndpoint.post(
+      "transferOwnership",
+    )`/organizations/${orgIdParam}/transfer-ownership`
+      .setPayload(S.Struct({ userId: S.UUID }))
+      .addSuccess(S.NullOr(Organization.select)),
+  )
+  .add(
+    HttpApiEndpoint.post(
+      "transferBillingContact",
+    )`/organizations/${orgIdParam}/transfer-billing-contact`
+      .setPayload(S.Struct({ userId: S.UUID }))
+      .addSuccess(S.NullOr(Organization.select)),
+  );
+
 export const Contract = HttpApi.make("Contract")
   .addError(InternalError, { status: 500 })
   .add(PostsGroup)
   .add(UsersGroup)
-  .add(EmailGroup);
+  .add(EmailGroup)
+  .add(OrganizationsGroup)
+  .prefix("/api");
