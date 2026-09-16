@@ -26,6 +26,7 @@ export const formConstraints = {
 			pattern: '^\\S[\\s\\S]*\\S$|^\\S$|^$',
 		},
 		email: {
+			required: true,
 			type: 'email',
 			minLength: 6,
 			maxLength: 998,

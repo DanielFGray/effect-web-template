@@ -40,7 +40,7 @@ const performRegister = (payload: typeof RegisterPayload.Type): Promise<ActionRe
 	)
 
 const registerFn = createServerFn({ method: 'POST' })
-	.validator((data: { username: string; password: string; email: string | null }) => data)
+	.validator((data: { username: string; password: string; email: string }) => data)
 	.handler(({ data }): Promise<ActionResult> => performRegister(data))
 
 export const Route = createFileRoute('/register')({
@@ -77,7 +77,7 @@ export const Route = createFileRoute('/register')({
 						registerAction: {
 							values: {
 								username: decoded.payload.username,
-								email: decoded.payload.email ?? '',
+								email: decoded.payload.email,
 							},
 							response: result.error,
 						} satisfies FormAction<typeof values>,

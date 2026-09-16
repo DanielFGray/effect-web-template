@@ -5,6 +5,7 @@ import { NullableEmail, NullableText } from './fields.js'
 import {
 	ChangePasswordFormPayload,
 	RegisterFormPayload,
+	RegisterPayload,
 	ResetPasswordFormPayload,
 	UpdateProfilePayload,
 } from './payloads.js'
@@ -71,13 +72,83 @@ suite('UpdateProfilePayload blank fields', () => {
 	})
 })
 
+suite('RegisterPayload email required', () => {
+	const base = { username: 'alice', password: 'password123' }
+
+	it('rejects a missing email', () => {
+		const result = Schema.decodeUnknownEither(RegisterPayload)(base)
+		expect(
+			ParseResult.ArrayFormatter.formatErrorSync(
+				Option.getOrThrow(Either.getLeft(result)),
+			),
+		).toEqual([
+			{
+				_tag: 'Missing',
+				path: ['email'],
+				message: 'is missing',
+			},
+		])
+	})
+
+	it("rejects ''", () => {
+		const result = Schema.decodeUnknownEither(RegisterPayload)({
+			...base,
+			email: '',
+		})
+		expect(
+			ParseResult.ArrayFormatter.formatErrorSync(
+				Option.getOrThrow(Either.getLeft(result)),
+			),
+		).toEqual([
+			{
+				_tag: 'Refinement',
+				path: ['email'],
+				message: 'Enter a valid email address',
+			},
+		])
+	})
+
+	it("rejects '   '", () => {
+		const result = Schema.decodeUnknownEither(RegisterPayload)({
+			...base,
+			email: '   ',
+		})
+		expect(
+			ParseResult.ArrayFormatter.formatErrorSync(
+				Option.getOrThrow(Either.getLeft(result)),
+			),
+		).toEqual([
+			{
+				_tag: 'Refinement',
+				path: ['email'],
+				message: 'Enter a valid email address',
+			},
+		])
+	})
+
+	it('keeps a valid address', () => {
+		expect(
+			Either.getOrThrow(
+				Schema.decodeUnknownEither(RegisterPayload)({
+					...base,
+					email: 'alice@example.com',
+				}),
+			),
+		).toEqual({
+			username: 'alice',
+			password: 'password123',
+			email: 'alice@example.com',
+		})
+	})
+})
+
 suite('RegisterFormPayload confirmPassword', () => {
 	it('mismatch fails at confirmPassword', () => {
 		const result = Schema.decodeUnknownEither(RegisterFormPayload)({
 			username: 'alice',
 			password: 'password123',
 			confirmPassword: 'different99',
-			email: null,
+			email: 'alice@example.com',
 		})
 		expect(
 			ParseResult.ArrayFormatter.formatErrorSync(

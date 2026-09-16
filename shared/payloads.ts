@@ -8,18 +8,12 @@
  */
 import { Schema as S } from 'effect'
 
-import {
-	EmailSchema,
-	NullableEmail,
-	NullableText,
-	Password,
-	SubmittedSecret,
-} from './fields.js'
+import { EmailSchema, NullableText, Password, SubmittedSecret } from './fields.js'
 
 export const RegisterPayload = S.Struct({
 	username: S.NonEmptyTrimmedString,
 	password: Password,
-	email: NullableEmail,
+	email: EmailSchema,
 })
 
 /**
