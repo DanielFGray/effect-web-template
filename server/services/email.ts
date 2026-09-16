@@ -13,6 +13,15 @@ import {
 export class Email extends Effect.Service<Email>()("User/Email", {
   accessors: true,
   sync: () => ({
+    listMine: Effect.fnUntraced(function* () {
+      const db = yield* KyselyDB;
+      return yield* db
+        .selectFrom("app_public.user_emails")
+        .selectAll()
+        .orderBy("created_at", "asc")
+        .pipe(catchSql);
+    }),
+
     addEmail: Effect.fnUntraced(function* ({ email }: { email: string }) {
       const db = yield* KyselyDB;
       return yield* db

@@ -5,6 +5,7 @@ import { Contract } from "../../shared/httpApi.js";
 
 export const EmailApiGroupLive = HttpApiBuilder.group(Contract, "email", (handlers) =>
   handlers
+    .handle("list", () => Email.listMine().pipe(withAuthContext))
     .handle("addEmail", ({ payload }) => Email.addEmail(payload).pipe(withAuthContext))
     .handle("makeEmailPrimary", ({ path: { id } }) =>
       Email.makeEmailPrimary({ emailId: id }).pipe(withAuthContext),

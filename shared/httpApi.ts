@@ -157,6 +157,7 @@ const UsersGroup = HttpApiGroup.make("users")
   );
 
 const EmailGroup = HttpApiGroup.make("email")
+  .add(HttpApiEndpoint.get("list", "/emails").addSuccess(S.Array(UserEmail.select)))
   .add(
     HttpApiEndpoint.post("addEmail", "/emails")
       .setPayload(S.Struct({ email: EmailSchema }))
