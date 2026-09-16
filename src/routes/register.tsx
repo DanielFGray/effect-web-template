@@ -1,10 +1,16 @@
-import { createFileRoute, Link, useNavigate, useRouter } from '@tanstack/react-router'
+import {
+	createFileRoute,
+	Link,
+	redirect,
+	useNavigate,
+	useRouter,
+} from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect, Schema } from 'effect'
 import { useState } from 'react'
 
 import { formConstraints } from '../../shared/formConstraints.gen.js'
-import { RegisterPayload } from '../../shared/payloads.js'
+import { RegisterFormPayload, RegisterPayload } from '../../shared/payloads.js'
 import {
 	Form,
 	formResultFromError,
@@ -12,39 +18,88 @@ import {
 	type FormResult,
 } from '../components.js'
 import { callApi } from '../lib/api.server.js'
+import {
+	type ActionResult,
+	decodeFormAction,
+	type FormAction,
+	formDataRecord,
+} from '../lib/formAction.js'
 
-type ActionResult = { ok: true; data: null } | { ok: false; error: FormResult }
-
-const registerFn = createServerFn({ method: 'POST' })
-	.validator((data: { username: string; password: string; email: string | null }) => data)
-	.handler(({ data }): Promise<ActionResult> =>
-		callApi((api) =>
-			api.users.register({ payload: data }).pipe(
-				Effect.map((): ActionResult => ({ ok: true, data: null })),
-				Effect.catchAll((err) =>
-					Effect.succeed({
-						ok: false as const,
-						error: formResultFromError(err),
-					}),
-				),
+const performRegister = (payload: typeof RegisterPayload.Type): Promise<ActionResult> =>
+	callApi((api) =>
+		api.users.register({ payload }).pipe(
+			Effect.map((): ActionResult => ({ ok: true, data: null })),
+			Effect.catchAll((err) =>
+				Effect.succeed({
+					ok: false as const,
+					error: formResultFromError(err),
+				}),
 			),
 		),
 	)
+
+const registerFn = createServerFn({ method: 'POST' })
+	.validator((data: { username: string; password: string; email: string | null }) => data)
+	.handler(({ data }): Promise<ActionResult> => performRegister(data))
 
 export const Route = createFileRoute('/register')({
 	validateSearch: (search: Record<string, unknown>) => ({
 		redirectTo: typeof search.redirectTo === 'string' ? search.redirectTo : undefined,
 	}),
+	server: {
+		handlers: {
+			POST: async ({ request, next }) => {
+				const record = formDataRecord(await request.formData())
+				const values = {
+					username: record.username ?? '',
+					email: record.email ?? '',
+				}
+
+				const decoded = decodeFormAction(RegisterFormPayload, record, values)
+				if (!decoded.ok) {
+					return next({
+						context: {
+							registerAction: decoded.action satisfies FormAction<typeof values>,
+						},
+					})
+				}
+
+				const result = await performRegister(decoded.payload)
+
+				if (result.ok) {
+					const redirectTo = new URL(request.url).searchParams.get('redirectTo')
+					throw redirect({ to: redirectTo || '/' })
+				}
+
+				return next({
+					context: {
+						registerAction: {
+							values: {
+								username: decoded.payload.username,
+								email: decoded.payload.email ?? '',
+							},
+							response: result.error,
+						} satisfies FormAction<typeof values>,
+					},
+				})
+			},
+		},
+	},
+	beforeLoad: ({ serverContext }) => ({
+		registerAction: serverContext?.registerAction,
+	}),
 	component: Register,
 })
 
 function Register() {
-	const [username, setUsername] = useState('')
-	const [email, setEmail] = useState('')
+	const { user, registerAction } = Route.useRouteContext()
+	const [username, setUsername] = useState(registerAction?.values.username ?? '')
+	const [email, setEmail] = useState(registerAction?.values.email ?? '')
 	const [password, setPassword] = useState('')
 	const [confirmPassword, setConfirmPassword] = useState('')
-	const [response, setResponse] = useState<FormResult>()
-	const { user } = Route.useRouteContext()
+	const [response, setResponse] = useState<FormResult | undefined>(
+		registerAction?.response,
+	)
 	const navigate = useNavigate()
 	const router = useRouter()
 	const { redirectTo } = Route.useSearch()
@@ -59,22 +114,17 @@ function Register() {
 		<>
 			<Form
 				prefix="register"
+				method="post"
 				response={response}
 				onSubmit={async (ev) => {
 					ev.preventDefault()
 					setResponse(undefined)
 
-					if (password !== confirmPassword) {
-						setResponse({
-							fieldErrors: { confirmPassword: ['Passwords do not match'] },
-						})
-						return
-					}
-
-					const decoded = Schema.decodeUnknownEither(RegisterPayload)({
+					const decoded = Schema.decodeUnknownEither(RegisterFormPayload)({
 						username,
 						password,
-						email: email.trim() === '' ? null : email,
+						email,
+						confirmPassword,
 					})
 					if (decoded._tag === 'Left') {
 						setResponse(formResultFromParseError(decoded.left))

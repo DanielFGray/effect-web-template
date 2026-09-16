@@ -18,20 +18,12 @@ import {
 	type FormResult,
 } from '../components.js'
 import { callApi } from '../lib/api.server.js'
-
-type ActionResult = { ok: true; data: null } | { ok: false; error: FormResult }
-
-/**
- * The outcome of a submission the browser made on its own, without JavaScript.
- * The POST handler puts it on the server context, `beforeLoad` lifts it into
- * route context, and the component seeds its state from it, so a rejected
- * submission renders with its errors and its values still in place. The
- * password is deliberately absent: it must never be written back into the DOM.
- */
-type LoginAction = {
-	values: { id: string }
-	response: FormResult
-}
+import {
+	type ActionResult,
+	decodeFormAction,
+	type FormAction,
+	formDataRecord,
+} from '../lib/formAction.js'
 
 /**
  * The one implementation of logging in. Both entry points below call it: the
@@ -56,16 +48,6 @@ const loginFn = createServerFn({ method: 'POST' })
 	.validator((data: { id: string; password: string }) => data)
 	.handler(({ data }): Promise<ActionResult> => performLogin(data))
 
-function formDataRecord(formData: FormData): Record<string, string> {
-	const record: Record<string, string> = {}
-	for (const [key, value] of formData.entries()) {
-		if (typeof value === 'string') {
-			record[key] = value
-		}
-	}
-	return record
-}
-
 export const Route = createFileRoute('/login')({
 	validateSearch: (search: Record<string, unknown>) => ({
 		redirectTo: typeof search.redirectTo === 'string' ? search.redirectTo : undefined,
@@ -80,19 +62,15 @@ export const Route = createFileRoute('/login')({
 			// importing callApi here does not reach the browser.
 			POST: async ({ request, next }) => {
 				const record = formDataRecord(await request.formData())
-				const decoded = Schema.decodeUnknownEither(LoginPayload)(record)
-				if (decoded._tag === 'Left') {
+				const values = { id: record.id ?? '' }
+				const decoded = decodeFormAction(LoginPayload, record, values)
+				if (!decoded.ok) {
 					return next({
-						context: {
-							loginAction: {
-								values: { id: record.id ?? '' },
-								response: formResultFromParseError(decoded.left),
-							} satisfies LoginAction,
-						},
+						context: { loginAction: decoded.action satisfies FormAction<typeof values> },
 					})
 				}
 
-				const result = await performLogin(decoded.right)
+				const result = await performLogin(decoded.payload)
 
 				if (result.ok) {
 					const redirectTo = new URL(request.url).searchParams.get('redirectTo')
@@ -102,9 +80,9 @@ export const Route = createFileRoute('/login')({
 				return next({
 					context: {
 						loginAction: {
-							values: { id: decoded.right.id },
+							values: { id: decoded.payload.id },
 							response: result.error,
-						} satisfies LoginAction,
+						} satisfies FormAction<typeof values>,
 					},
 				})
 			},

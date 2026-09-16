@@ -72,9 +72,13 @@ export const NullableText = nullable({
 /**
  * `string | null` whose non-null values satisfy `predicate`.
  *
- * Accepts exactly what `S.NullOr(inner)` accepts, with the same encoded type, but
- * reports one failure instead of one per branch: a union that fails tells the
- * user both what the field should be *and* that it should have been null.
+ * Blank and absent are the same thing: decoding `''` (or whitespace-only) yields
+ * `null`, the same as decoding `null`. A filter cannot map, so the blank→null
+ * step is a transform sitting under the predicate. Encoded and decoded types
+ * both stay `string | null` so a JSON client sending null is unchanged.
+ *
+ * Reports one failure instead of one per NullOr branch: a union that fails
+ * tells the user both what the field should be *and* that it should have been null.
  */
 function nullable(options: {
 	identifier: string
@@ -83,7 +87,10 @@ function nullable(options: {
 	message: string
 	jsonSchema: Record<string, unknown>
 }) {
-	return S.NullOr(S.String).pipe(
+	return S.transform(S.NullOr(S.String), S.NullOr(S.String), {
+		decode: (value) => (value === null || value.trim() === '' ? null : value),
+		encode: (value) => value,
+	}).pipe(
 		S.filter((value) => value === null || options.predicate(value), {
 			identifier: options.identifier,
 			...(options.title === undefined ? null : { title: options.title }),

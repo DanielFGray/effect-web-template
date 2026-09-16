@@ -1,10 +1,10 @@
-import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
+import { createFileRoute, redirect, useNavigate, useRouter } from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect, Schema } from 'effect'
 import { useState } from 'react'
 
 import { formConstraints } from '../../shared/formConstraints.gen.js'
-import { ResetPasswordPayload } from '../../shared/payloads.js'
+import { ResetPasswordFormPayload, ResetPasswordPayload } from '../../shared/payloads.js'
 import {
 	Form,
 	formResultFromError,
@@ -12,24 +12,29 @@ import {
 	type FormResult,
 } from '../components.js'
 import { callApi } from '../lib/api.server.js'
+import {
+	type ActionResult,
+	decodeFormAction,
+	type FormAction,
+	formDataRecord,
+} from '../lib/formAction.js'
 
-type ActionResult = { ok: true; data: null } | { ok: false; error: FormResult }
-
-const resetFn = createServerFn({ method: 'POST' })
-	.validator((data: { userId: string; token: string; password: string }) => data)
-	.handler(({ data }): Promise<ActionResult> =>
-		callApi((api) =>
-			api.users.resetPassword({ payload: data }).pipe(
-				Effect.map((): ActionResult => ({ ok: true, data: null })),
-				Effect.catchAll((err) =>
-					Effect.succeed({
-						ok: false as const,
-						error: formResultFromError(err),
-					}),
-				),
+const performReset = (payload: typeof ResetPasswordPayload.Type): Promise<ActionResult> =>
+	callApi((api) =>
+		api.users.resetPassword({ payload }).pipe(
+			Effect.map((): ActionResult => ({ ok: true, data: null })),
+			Effect.catchAll((err) =>
+				Effect.succeed({
+					ok: false as const,
+					error: formResultFromError(err),
+				}),
 			),
 		),
 	)
+
+const resetFn = createServerFn({ method: 'POST' })
+	.validator((data: { userId: string; token: string; password: string }) => data)
+	.handler(({ data }): Promise<ActionResult> => performReset(data))
 
 export const Route = createFileRoute('/reset')({
 	validateSearch: (search: Record<string, unknown>) => ({
@@ -37,38 +42,79 @@ export const Route = createFileRoute('/reset')({
 		token: typeof search.token === 'string' ? search.token : undefined,
 		redirectTo: typeof search.redirectTo === 'string' ? search.redirectTo : undefined,
 	}),
+	server: {
+		handlers: {
+			POST: async ({ request, next }) => {
+				const record = formDataRecord(await request.formData())
+				// userId/token come from hidden inputs when the email link supplied them
+				// in the query string — native submit has no other way to carry them.
+				const values = {
+					userId: record.userId ?? '',
+					token: record.token ?? '',
+				}
+
+				const decoded = decodeFormAction(ResetPasswordFormPayload, record, values)
+				if (!decoded.ok) {
+					return next({
+						context: {
+							resetAction: decoded.action satisfies FormAction<typeof values>,
+						},
+					})
+				}
+
+				const result = await performReset(decoded.payload)
+
+				if (result.ok) {
+					const redirectTo = new URL(request.url).searchParams.get('redirectTo')
+					throw redirect({ to: redirectTo || '/' })
+				}
+
+				return next({
+					context: {
+						resetAction: {
+							values: {
+								userId: decoded.payload.userId,
+								token: decoded.payload.token,
+							},
+							response: result.error,
+						} satisfies FormAction<typeof values>,
+					},
+				})
+			},
+		},
+	},
+	beforeLoad: ({ serverContext }) => ({
+		resetAction: serverContext?.resetAction,
+	}),
 	component: ResetPass,
 })
 
 function ResetPass() {
+	const { resetAction } = Route.useRouteContext()
 	const navigate = useNavigate()
 	const router = useRouter()
 	const { userId: userIdParam, token: tokenParam, redirectTo } = Route.useSearch()
-	const [userId, setUserId] = useState(userIdParam ?? '')
-	const [token, setToken] = useState(tokenParam ?? '')
+	const [userId, setUserId] = useState(resetAction?.values.userId ?? userIdParam ?? '')
+	const [token, setToken] = useState(resetAction?.values.token ?? tokenParam ?? '')
 	const [password, setPassword] = useState('')
 	const [confirmPassword, setConfirmPassword] = useState('')
-	const [response, setResponse] = useState<FormResult>()
+	const [response, setResponse] = useState<FormResult | undefined>(resetAction?.response)
 	const reset = useServerFn(resetFn)
 
 	return (
 		<div>
 			<Form
 				prefix="reset"
+				method="post"
 				response={response}
 				onSubmit={async (ev) => {
 					ev.preventDefault()
 					setResponse(undefined)
-					if (password !== confirmPassword) {
-						setResponse({
-							fieldErrors: { confirmPassword: ['Passwords do not match'] },
-						})
-						return
-					}
-					const decoded = Schema.decodeUnknownEither(ResetPasswordPayload)({
+					const decoded = Schema.decodeUnknownEither(ResetPasswordFormPayload)({
 						userId,
 						token,
 						password,
+						confirmPassword,
 					})
 					if (decoded._tag === 'Left') {
 						setResponse(formResultFromParseError(decoded.left))

@@ -12,7 +12,7 @@ import { useState } from 'react'
 import { formConstraints } from '../../shared/formConstraints.gen.js'
 import {
 	AddEmailPayload,
-	ChangePasswordPayload,
+	ChangePasswordFormPayload,
 	UpdateProfilePayload,
 } from '../../shared/payloads.js'
 import {
@@ -249,9 +249,9 @@ function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
 				setResponse(undefined)
 				const decoded = Schema.decodeUnknownEither(UpdateProfilePayload)({
 					username,
-					name: name.trim() === '' ? null : name,
-					avatar_url: avatarUrl.trim() === '' ? null : avatarUrl,
-					bio: bio.trim() === '' ? null : bio,
+					name,
+					avatar_url: avatarUrl,
+					bio,
 				})
 				if (decoded._tag === 'Left') {
 					setResponse(formResultFromParseError(decoded.left))
@@ -321,15 +321,10 @@ function PasswordSettings() {
 			onSubmit={async (ev) => {
 				ev.preventDefault()
 				setResponse(undefined)
-				if (password !== confirmPassword) {
-					setResponse({
-						fieldErrors: { confirmPassword: ['Passwords do not match'] },
-					})
-					return
-				}
-				const decoded = Schema.decodeUnknownEither(ChangePasswordPayload)({
+				const decoded = Schema.decodeUnknownEither(ChangePasswordFormPayload)({
 					oldPassword,
 					newPassword: password,
+					confirmPassword,
 				})
 				if (decoded._tag === 'Left') {
 					setResponse(formResultFromParseError(decoded.left))

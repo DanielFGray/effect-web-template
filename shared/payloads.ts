@@ -22,6 +22,31 @@ export const RegisterPayload = S.Struct({
 	email: NullableEmail,
 })
 
+/**
+ * Browser form submission for register: API fields plus confirmPassword.
+ * Decoded type is RegisterPayload — confirmPassword never reaches the endpoint.
+ */
+export const RegisterFormPayload = S.transform(
+	S.Struct({
+		...RegisterPayload.fields,
+		confirmPassword: S.String,
+	}).pipe(
+		S.filter((input) =>
+			input.password === input.confirmPassword
+				? undefined
+				: {
+						path: ['confirmPassword'],
+						message: 'Passwords do not match',
+					},
+		),
+	),
+	RegisterPayload,
+	{
+		decode: ({ confirmPassword: _confirm, ...payload }) => payload,
+		encode: (payload) => ({ ...payload, confirmPassword: payload.password }),
+	},
+)
+
 export const LoginPayload = S.Struct({
 	id: S.NonEmptyTrimmedString,
 	password: SubmittedSecret,
@@ -35,10 +60,61 @@ export const ResetPasswordPayload = S.Struct({
 	password: Password,
 })
 
+/**
+ * Browser form submission for reset: API fields plus confirmPassword.
+ * Decoded type is ResetPasswordPayload — confirmPassword never reaches the endpoint.
+ */
+export const ResetPasswordFormPayload = S.transform(
+	S.Struct({
+		...ResetPasswordPayload.fields,
+		confirmPassword: S.String,
+	}).pipe(
+		S.filter((input) =>
+			input.password === input.confirmPassword
+				? undefined
+				: {
+						path: ['confirmPassword'],
+						message: 'Passwords do not match',
+					},
+		),
+	),
+	ResetPasswordPayload,
+	{
+		decode: ({ confirmPassword: _confirm, ...payload }) => payload,
+		encode: (payload) => ({ ...payload, confirmPassword: payload.password }),
+	},
+)
+
 export const ChangePasswordPayload = S.Struct({
 	oldPassword: SubmittedSecret,
 	newPassword: Password,
 })
+
+/**
+ * Browser form submission for change-password (settings). Same shape as
+ * register/reset confirmation; settings can adopt this without inventing a
+ * third copy of the match rule.
+ */
+export const ChangePasswordFormPayload = S.transform(
+	S.Struct({
+		...ChangePasswordPayload.fields,
+		confirmPassword: S.String,
+	}).pipe(
+		S.filter((input) =>
+			input.newPassword === input.confirmPassword
+				? undefined
+				: {
+						path: ['confirmPassword'],
+						message: 'Passwords do not match',
+					},
+		),
+	),
+	ChangePasswordPayload,
+	{
+		decode: ({ confirmPassword: _confirm, ...payload }) => payload,
+		encode: (payload) => ({ ...payload, confirmPassword: payload.newPassword }),
+	},
+)
 
 export const UpdateProfilePayload = S.Struct({
 	username: S.NonEmptyTrimmedString,

@@ -65,31 +65,35 @@ Form.Row = function FormRow(
 		Omit<React.ComponentPropsWithoutRef<'input'>, 'type' | 'name'>,
 ) {
 	const { prefix, response } = React.useContext(FormContext)
+	// `label` (and `children`) are Form.Row's own props — they must not land on the DOM node.
+	const { name, label } = props
+	const field = (() => {
+		if ('children' in props) {
+			return props.children
+		}
+		const { type, label: _label, name: _name, ...inputProps } = props
+		return React.createElement(type === 'textarea' ? 'textarea' : 'input', {
+			...inputProps,
+			...(type === 'textarea' ? { pattern: undefined } : null),
+			type: type === 'textarea' ? undefined : type,
+			name,
+			id: `${prefix}-${name}-input`,
+			'aria-describedby': `${prefix}-${name}-help`,
+			'aria-invalid': Boolean(response?.fieldErrors?.[name]),
+			'data-cy': `${prefix}-${name}-input`,
+		})
+	})()
 
 	return (
 		<div className="form-row">
-			{props.label === null ? null : (
-				<label
-					htmlFor={`${prefix}-${props.name}-input`}
-					data-cy={`${prefix}-${props.name}-label`}
-				>
-					{props.label || props.name}:
+			{label === null ? null : (
+				<label htmlFor={`${prefix}-${name}-input`} data-cy={`${prefix}-${name}-label`}>
+					{label || name}:
 				</label>
 			)}
-			{'children' in props
-				? props.children
-				: React.createElement(props.type === 'textarea' ? 'textarea' : 'input', {
-						...props,
-						...(props.type === 'textarea' ? { pattern: undefined } : null),
-						type: props.type === 'textarea' ? undefined : props.type,
-						name: props.name,
-						id: `${prefix}-${props.name}-input`,
-						'aria-describedby': `${prefix}-${props.name}-help`,
-						'aria-invalid': Boolean(response?.fieldErrors?.[props.name]),
-						'data-cy': `${prefix}-${props.name}-input`,
-					})}
-			{response?.fieldErrors?.[props.name]?.map((e) => (
-				<div className="field-error" key={e} id={`${prefix}-${props.name}-help`}>
+			{field}
+			{response?.fieldErrors?.[name]?.map((e) => (
+				<div className="field-error" key={e} id={`${prefix}-${name}-help`}>
 					{e}
 				</div>
 			))}
