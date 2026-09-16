@@ -9,7 +9,7 @@ import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
 import { useState } from 'react'
 
-import { isValidEmail, isValidPassword } from '../../shared/validation.js'
+import { formConstraints } from '../../shared/formConstraints.gen.js'
 import {
 	Form,
 	Spinner,
@@ -259,18 +259,21 @@ function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
 			<fieldset>
 				<legend>profile settings</legend>
 				<Form.Row
+					{...formConstraints['users.updateProfile'].username}
 					name="username"
 					type="text"
 					value={username}
 					onChange={(e) => setUsername(e.target.value)}
 				/>
 				<Form.Row
+					{...formConstraints['users.updateProfile'].name}
 					name="name"
 					type="text"
 					value={name}
 					onChange={(e) => setName(e.target.value)}
 				/>
 				<Form.Row
+					{...formConstraints['users.updateProfile'].avatar_url}
 					label="avatar"
 					name="avatar_url"
 					type="text"
@@ -278,6 +281,7 @@ function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
 					onChange={(e) => setAvatarUrl(e.target.value)}
 				/>
 				<Form.Row
+					{...formConstraints['users.updateProfile'].bio}
 					name="bio"
 					type="textarea"
 					value={bio}
@@ -312,14 +316,6 @@ function PasswordSettings() {
 					})
 					return
 				}
-				if (!isValidPassword(password)) {
-					setResponse({
-						fieldErrors: {
-							password: ['Password must be at least 8 characters'],
-						},
-					})
-					return
-				}
 				const result = await changePassword({
 					data: {
 						oldPassword,
@@ -341,6 +337,7 @@ function PasswordSettings() {
 				<legend>password settings</legend>
 
 				<Form.Row
+					{...formConstraints['users.changePassword'].oldPassword}
 					label="old password"
 					type="password"
 					name="oldPassword"
@@ -350,6 +347,7 @@ function PasswordSettings() {
 				/>
 
 				<Form.Row
+					{...formConstraints['users.changePassword'].newPassword}
 					label="new password"
 					type="password"
 					name="password"
@@ -541,10 +539,6 @@ function AddEmailForm() {
 			onSubmit={async (ev) => {
 				ev.preventDefault()
 				setResponse(undefined)
-				if (!isValidEmail(email)) {
-					setResponse({ fieldErrors: { email: ['Invalid email address'] } })
-					return
-				}
 				const result = await addEmail({
 					data: { email },
 				})
@@ -558,9 +552,9 @@ function AddEmailForm() {
 			}}
 		>
 			<Form.Row
+				{...formConstraints['email.addEmail'].email}
 				label="new email"
 				name="email"
-				type="email"
 				value={email}
 				onChange={(e) => setEmail(e.target.value)}
 			/>

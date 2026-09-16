@@ -3,6 +3,7 @@ import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
 import { useState } from 'react'
 
+import { formConstraints } from '../../shared/formConstraints.gen.js'
 import { Form, formResultFromError, type FormResult } from '../components.js'
 import { callApi } from '../lib/api.server.js'
 
@@ -69,6 +70,7 @@ function Login() {
 						<div className="field-error">you must be logged in to do that!</div>
 					) : null}
 					<Form.Row
+						{...formConstraints['users.login'].id}
 						type="text"
 						label="username or email"
 						name="id"
@@ -76,6 +78,7 @@ function Login() {
 						onChange={(e) => setId(e.target.value)}
 					/>
 					<Form.Row
+						{...formConstraints['users.login'].password}
 						type="password"
 						name="password"
 						value={password}

@@ -3,7 +3,7 @@ import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
 import { useState } from 'react'
 
-import { isValidEmail, isValidPassword } from '../../shared/validation.js'
+import { formConstraints } from '../../shared/formConstraints.gen.js'
 import { Form, formResultFromError, type FormResult } from '../components.js'
 import { callApi } from '../lib/api.server.js'
 
@@ -65,31 +65,11 @@ function Register() {
 						return
 					}
 
-					if (!isValidPassword(password)) {
-						setResponse({
-							fieldErrors: {
-								password: ['Password must be at least 8 characters'],
-							},
-						})
-						return
-					}
-
-					let emailPayload: string | null = null
-					if (email.trim() !== '') {
-						if (!isValidEmail(email)) {
-							setResponse({
-								fieldErrors: { email: ['Invalid email address'] },
-							})
-							return
-						}
-						emailPayload = email
-					}
-
 					const result = await register({
 						data: {
 							username,
 							password,
-							email: emailPayload,
+							email: email.trim() === '' ? null : email,
 						},
 					})
 					if (result.ok) {
@@ -104,18 +84,20 @@ function Register() {
 					<legend>register</legend>
 
 					<Form.Row
+						{...formConstraints['users.register'].username}
 						name="username"
 						type="text"
 						value={username}
 						onChange={(e) => setUsername(e.target.value)}
 					/>
 					<Form.Row
+						{...formConstraints['users.register'].email}
 						name="email"
-						type="text"
 						value={email}
 						onChange={(e) => setEmail(e.target.value)}
 					/>
 					<Form.Row
+						{...formConstraints['users.register'].password}
 						name="password"
 						type="password"
 						autoComplete="new-password"

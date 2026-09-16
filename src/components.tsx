@@ -58,6 +58,7 @@ Form.Row = function FormRow(
 				? props.children
 				: React.createElement(props.type === 'textarea' ? 'textarea' : 'input', {
 						...props,
+						...(props.type === 'textarea' ? { pattern: undefined } : null),
 						type: props.type === 'textarea' ? undefined : props.type,
 						name: props.name,
 						id: `${prefix}-${props.name}-input`,

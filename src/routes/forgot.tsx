@@ -3,7 +3,7 @@ import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
 import { useState } from 'react'
 
-import { isValidEmail } from '../../shared/validation.js'
+import { formConstraints } from '../../shared/formConstraints.gen.js'
 import { Form, formResultFromError, type FormResult } from '../components.js'
 import { callApi } from '../lib/api.server.js'
 
@@ -52,10 +52,6 @@ function ForgotPassword() {
 			onSubmit={async (ev) => {
 				ev.preventDefault()
 				setResponse(undefined)
-				if (!isValidEmail(email)) {
-					setResponse({ fieldErrors: { email: ['Invalid email address'] } })
-					return
-				}
 				const result = await forgot({
 					data: { email },
 				})
@@ -70,7 +66,7 @@ function ForgotPassword() {
 				<legend>forgot password</legend>
 				<Form.Row
 					name="email"
-					type="text"
+					{...formConstraints['users.forgotPassword'].email}
 					autoComplete="email"
 					value={email}
 					onChange={(e) => setEmail(e.target.value)}

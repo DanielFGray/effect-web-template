@@ -3,7 +3,7 @@ import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
 import { useState } from 'react'
 
-import { isValidPassword } from '../../shared/validation.js'
+import { formConstraints } from '../../shared/formConstraints.gen.js'
 import { Form, formResultFromError, type FormResult } from '../components.js'
 import { callApi } from '../lib/api.server.js'
 
@@ -59,14 +59,6 @@ function ResetPass() {
 						})
 						return
 					}
-					if (!isValidPassword(password)) {
-						setResponse({
-							fieldErrors: {
-								password: ['Password must be at least 8 characters'],
-							},
-						})
-						return
-					}
 					const result = await reset({
 						data: {
 							userId,
@@ -107,6 +99,7 @@ function ResetPass() {
 						/>
 					)}
 					<Form.Row
+						{...formConstraints['users.resetPassword'].password}
 						name="password"
 						type="password"
 						label="new password"
