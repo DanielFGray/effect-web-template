@@ -1,8 +1,6 @@
 import { Model } from '@effect/sql'
 import { Schema as S } from 'effect'
 
-import { isValidEmail, isValidPassword } from './validation.js'
-
 export class User extends Model.Class<User>('User')({
 	id: Model.Generated(S.UUID),
 	username: S.NonEmptyTrimmedString,
@@ -94,19 +92,3 @@ export class OrganizationInvitation extends Model.Class<OrganizationInvitation>(
 	user_id: S.NullOr(S.UUID),
 	email: S.NullOr(S.String),
 }) {}
-
-export const Password = S.NonEmptyTrimmedString.pipe(
-	S.filter(isValidPassword, {
-		identifier: 'Password',
-		title: 'Password',
-		jsonSchema: { minLength: 8 },
-	}),
-)
-
-export const EmailSchema = S.String.pipe(
-	S.filter(isValidEmail, {
-		identifier: 'Email',
-		title: 'Email',
-		jsonSchema: { format: 'email', minLength: 6, maxLength: 998 },
-	}),
-)

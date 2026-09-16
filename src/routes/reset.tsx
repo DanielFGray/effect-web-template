@@ -1,10 +1,16 @@
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { useState } from 'react'
 
 import { formConstraints } from '../../shared/formConstraints.gen.js'
-import { Form, formResultFromError, type FormResult } from '../components.js'
+import { ResetPasswordPayload } from '../../shared/payloads.js'
+import {
+	Form,
+	formResultFromError,
+	formResultFromParseError,
+	type FormResult,
+} from '../components.js'
 import { callApi } from '../lib/api.server.js'
 
 type ActionResult = { ok: true; data: null } | { ok: false; error: FormResult }
@@ -59,12 +65,17 @@ function ResetPass() {
 						})
 						return
 					}
+					const decoded = Schema.decodeUnknownEither(ResetPasswordPayload)({
+						userId,
+						token,
+						password,
+					})
+					if (decoded._tag === 'Left') {
+						setResponse(formResultFromParseError(decoded.left))
+						return
+					}
 					const result = await reset({
-						data: {
-							userId,
-							token,
-							password,
-						},
+						data: decoded.right,
 					})
 					if (result.ok) {
 						await router.invalidate()

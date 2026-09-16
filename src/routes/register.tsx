@@ -1,10 +1,16 @@
 import { createFileRoute, Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { useState } from 'react'
 
 import { formConstraints } from '../../shared/formConstraints.gen.js'
-import { Form, formResultFromError, type FormResult } from '../components.js'
+import { RegisterPayload } from '../../shared/payloads.js'
+import {
+	Form,
+	formResultFromError,
+	formResultFromParseError,
+	type FormResult,
+} from '../components.js'
 import { callApi } from '../lib/api.server.js'
 
 type ActionResult = { ok: true; data: null } | { ok: false; error: FormResult }
@@ -65,13 +71,17 @@ function Register() {
 						return
 					}
 
-					const result = await register({
-						data: {
-							username,
-							password,
-							email: email.trim() === '' ? null : email,
-						},
+					const decoded = Schema.decodeUnknownEither(RegisterPayload)({
+						username,
+						password,
+						email: email.trim() === '' ? null : email,
 					})
+					if (decoded._tag === 'Left') {
+						setResponse(formResultFromParseError(decoded.left))
+						return
+					}
+
+					const result = await register({ data: decoded.right })
 					if (result.ok) {
 						await router.invalidate()
 						void navigate({ to: redirectTo || '/' })

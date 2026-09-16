@@ -1,3 +1,4 @@
+import { ParseResult } from 'effect'
 import React from 'react'
 
 export type FormResult = {
@@ -20,12 +21,33 @@ export function Form({
 	prefix: string
 	response?: FormResult
 } & React.ComponentPropsWithoutRef<'form'>) {
+	// Before hydration (and with JS off) the browser enforces the native constraint
+	// attributes. After hydration the schema decode owns error presentation, so the
+	// native bubbles would only duplicate it.
+	const hydrated = useHydrated()
+
 	return (
 		<FormContext.Provider value={{ prefix, response }}>
-			<form {...props}>{children}</form>
+			<form {...props} noValidate={hydrated}>
+				{children}
+			</form>
 		</FormContext.Provider>
 	)
 }
+
+/**
+ * False while server-rendering and through the hydration render, true after.
+ * The store never changes, so the two snapshots alone carry the signal.
+ */
+function useHydrated(): boolean {
+	return React.useSyncExternalStore(
+		subscribeToNothing,
+		() => true,
+		() => false,
+	)
+}
+
+const subscribeToNothing = () => () => {}
 
 Form.Row = function FormRow(
 	props: (
@@ -119,4 +141,24 @@ export function formResultFromError(error: {
 		return { formErrors: [error.message] }
 	}
 	return { formErrors: ['Something went wrong'] }
+}
+
+/** Map a client-side Schema ParseError into form display fields. */
+export function formResultFromParseError(error: ParseResult.ParseError): FormResult {
+	const issues = ParseResult.ArrayFormatter.formatErrorSync(error)
+	const formErrors = issues
+		.filter((issue) => issue.path.length === 0)
+		.map((issue) => issue.message)
+	const fieldErrors = Object.fromEntries(
+		Object.entries(
+			Object.groupBy(
+				issues.filter((issue) => issue.path.length > 0),
+				(issue) => String(issue.path[0]),
+			),
+		).map(([field, group]) => [field, (group ?? []).map((issue) => issue.message)]),
+	)
+	return {
+		fieldErrors: Object.keys(fieldErrors).length === 0 ? undefined : fieldErrors,
+		formErrors: formErrors.length === 0 ? undefined : formErrors,
+	}
 }

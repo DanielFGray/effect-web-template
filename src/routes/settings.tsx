@@ -6,15 +6,21 @@ import {
 	type ErrorComponentProps,
 } from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { useState } from 'react'
 
 import { formConstraints } from '../../shared/formConstraints.gen.js'
+import {
+	AddEmailPayload,
+	ChangePasswordPayload,
+	UpdateProfilePayload,
+} from '../../shared/payloads.js'
 import {
 	Form,
 	Spinner,
 	UnverifiedAccountWarning,
 	formResultFromError,
+	formResultFromParseError,
 	type FormResult,
 } from '../components.js'
 import { callApi } from '../lib/api.server.js'
@@ -241,13 +247,18 @@ function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
 			onSubmit={async (ev) => {
 				ev.preventDefault()
 				setResponse(undefined)
+				const decoded = Schema.decodeUnknownEither(UpdateProfilePayload)({
+					username,
+					name: name.trim() === '' ? null : name,
+					avatar_url: avatarUrl.trim() === '' ? null : avatarUrl,
+					bio: bio.trim() === '' ? null : bio,
+				})
+				if (decoded._tag === 'Left') {
+					setResponse(formResultFromParseError(decoded.left))
+					return
+				}
 				const result = await updateProfile({
-					data: {
-						username,
-						name: name.trim() === '' ? null : name,
-						avatar_url: avatarUrl.trim() === '' ? null : avatarUrl,
-						bio: bio.trim() === '' ? null : bio,
-					},
+					data: decoded.right,
 				})
 				if (result.ok) {
 					await router.invalidate()
@@ -316,11 +327,16 @@ function PasswordSettings() {
 					})
 					return
 				}
+				const decoded = Schema.decodeUnknownEither(ChangePasswordPayload)({
+					oldPassword,
+					newPassword: password,
+				})
+				if (decoded._tag === 'Left') {
+					setResponse(formResultFromParseError(decoded.left))
+					return
+				}
 				const result = await changePassword({
-					data: {
-						oldPassword,
-						newPassword: password,
-					},
+					data: decoded.right,
 				})
 				if (result.ok) {
 					setOldPassword('')
@@ -350,7 +366,7 @@ function PasswordSettings() {
 					{...formConstraints['users.changePassword'].newPassword}
 					label="new password"
 					type="password"
-					name="password"
+					name="newPassword"
 					autoComplete="new-password"
 					value={password}
 					onChange={(e) => setPassword(e.target.value)}
@@ -539,8 +555,13 @@ function AddEmailForm() {
 			onSubmit={async (ev) => {
 				ev.preventDefault()
 				setResponse(undefined)
+				const decoded = Schema.decodeUnknownEither(AddEmailPayload)({ email })
+				if (decoded._tag === 'Left') {
+					setResponse(formResultFromParseError(decoded.left))
+					return
+				}
 				const result = await addEmail({
-					data: { email },
+					data: decoded.right,
 				})
 				if (result.ok) {
 					setEmail('')

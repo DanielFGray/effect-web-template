@@ -1,10 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { useState } from 'react'
 
 import { formConstraints } from '../../shared/formConstraints.gen.js'
-import { Form, formResultFromError, type FormResult } from '../components.js'
+import { ForgotPasswordPayload } from '../../shared/payloads.js'
+import {
+	Form,
+	formResultFromError,
+	formResultFromParseError,
+	type FormResult,
+} from '../components.js'
 import { callApi } from '../lib/api.server.js'
 
 type ActionResult = { ok: true; data: null } | { ok: false; error: FormResult }
@@ -52,8 +58,13 @@ function ForgotPassword() {
 			onSubmit={async (ev) => {
 				ev.preventDefault()
 				setResponse(undefined)
+				const decoded = Schema.decodeUnknownEither(ForgotPasswordPayload)({ email })
+				if (decoded._tag === 'Left') {
+					setResponse(formResultFromParseError(decoded.left))
+					return
+				}
 				const result = await forgot({
-					data: { email },
+					data: decoded.right,
 				})
 				if (result.ok) {
 					setDone(true)

@@ -19,13 +19,21 @@ import {
 	NotFound,
 	CannotDeleteWhileOwningOrganization,
 } from './errors.js'
+import { NullableEmail } from './fields.js'
+import {
+	AddEmailPayload,
+	ChangePasswordPayload,
+	ForgotPasswordPayload,
+	LoginPayload,
+	RegisterPayload,
+	ResetPasswordPayload,
+	UpdateProfilePayload,
+} from './payloads.js'
 import {
 	User,
 	Post,
 	PostWithDetails,
 	UserEmail,
-	Password,
-	EmailSchema,
 	AuthenticatedUser,
 	Organization,
 	OrganizationMember,
@@ -70,13 +78,7 @@ const UsersGroup = HttpApiGroup.make('users')
 	.add(HttpApiEndpoint.get('me', '/auth/me').addSuccess(S.NullOr(AuthenticatedUser)))
 	.add(
 		HttpApiEndpoint.post('register', '/auth/register')
-			.setPayload(
-				S.Struct({
-					username: S.NonEmptyTrimmedString,
-					password: Password,
-					email: S.NullOr(EmailSchema),
-				}),
-			)
+			.setPayload(RegisterPayload)
 			.addSuccess(User.select, { status: 201 })
 			.addError(MissingData, { status: 400 })
 			.addError(WeakPassword, { status: 400 })
@@ -85,12 +87,7 @@ const UsersGroup = HttpApiGroup.make('users')
 	)
 	.add(
 		HttpApiEndpoint.post('login', '/auth/login')
-			.setPayload(
-				S.Struct({
-					id: S.NonEmptyTrimmedString,
-					password: S.NonEmptyTrimmedString,
-				}),
-			)
+			.setPayload(LoginPayload)
 			.addSuccess(User.select)
 			.addError(InvalidCredentials, { status: 401 })
 			.addError(AccountLocked, { status: 423 }),
@@ -109,28 +106,17 @@ const UsersGroup = HttpApiGroup.make('users')
 	)
 	.add(
 		HttpApiEndpoint.post('forgotPassword', '/auth/forgot-password')
-			.setPayload(S.Struct({ email: EmailSchema }))
+			.setPayload(ForgotPasswordPayload)
 			.addSuccess(S.Void),
 	)
 	.add(
 		HttpApiEndpoint.post('resetPassword', '/auth/reset-password')
-			.setPayload(
-				S.Struct({
-					userId: S.UUID,
-					token: S.NonEmptyTrimmedString,
-					password: Password,
-				}),
-			)
+			.setPayload(ResetPasswordPayload)
 			.addSuccess(S.Struct({ reset_password: S.Boolean })),
 	)
 	.add(
 		HttpApiEndpoint.post('changePassword', '/auth/change-password')
-			.setPayload(
-				S.Struct({
-					oldPassword: S.NonEmptyTrimmedString,
-					newPassword: Password,
-				}),
-			)
+			.setPayload(ChangePasswordPayload)
 			.addSuccess(S.Struct({ change_password: S.Boolean }))
 			.addError(AuthenticationRequired, { status: 401 })
 			.addError(InvalidCredentials, { status: 401 })
@@ -138,7 +124,7 @@ const UsersGroup = HttpApiGroup.make('users')
 	)
 	.add(
 		HttpApiEndpoint.patch('updateProfile', '/profile')
-			.setPayload(User.select.pick('username', 'name', 'avatar_url', 'bio'))
+			.setPayload(UpdateProfilePayload)
 			.addSuccess(User.select),
 	)
 	.add(
@@ -160,7 +146,7 @@ const EmailGroup = HttpApiGroup.make('email')
 	.add(HttpApiEndpoint.get('list', '/emails').addSuccess(S.Array(UserEmail.select)))
 	.add(
 		HttpApiEndpoint.post('addEmail', '/emails')
-			.setPayload(S.Struct({ email: EmailSchema }))
+			.setPayload(AddEmailPayload)
 			.addSuccess(UserEmail, { status: 201 })
 			.addError(EmailAlreadyTaken, { status: 409 }),
 	)
@@ -244,7 +230,7 @@ const OrganizationsGroup = HttpApiGroup.make('organizations')
 			.setPayload(
 				S.Struct({
 					username: S.NullOr(S.NonEmptyTrimmedString),
-					email: S.NullOr(EmailSchema),
+					email: NullableEmail,
 				}),
 			)
 			.addSuccess(S.Void)
