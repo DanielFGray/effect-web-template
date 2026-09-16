@@ -4,6 +4,16 @@
 // any script runs. After hydration the form decodes against the payload schema.
 
 export const formConstraints = {
+	'posts.create': {
+		body: {
+			required: true,
+			minLength: 1,
+			pattern: '^\\S[\\s\\S]*\\S$|^\\S$|^$',
+		},
+		privacy: {
+			required: true,
+		},
+	},
 	'users.register': {
 		username: {
 			required: true,
