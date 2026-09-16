@@ -19,6 +19,7 @@ import { CookieSigner } from './services/cookie-signer.js'
 import { Email } from './services/email.js'
 import { Organizations } from './services/organizations.js'
 import { Posts } from './services/posts.js'
+import { SessionCookieHttpLive } from './services/session-cookie.js'
 import { Sessions } from './services/session.js'
 import { Users } from './services/users.js'
 import { TestingApi, TestingApiLive } from './testingApi.js'
@@ -39,6 +40,7 @@ const ServerLive = HttpApiBuilder.serve().pipe(
 	Layer.provide(ApiLive),
 	Layer.provide(TestingApiLive),
 	Layer.provide(Sessions.Default),
+	Layer.provide(SessionCookieHttpLive),
 	Layer.provide(CookieSigner.Live),
 	Layer.provide(Users.Live),
 	Layer.provide(PgRootDB.Live),

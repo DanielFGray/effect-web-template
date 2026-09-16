@@ -1,5 +1,4 @@
 // import { camelToSnake, snakeToCamel } from "effect/String";
-import { HttpServerRequest } from '@effect/platform/HttpServerRequest'
 import { SqlError } from '@effect/sql'
 import * as PgKysely from '@effect/sql-kysely/Pg'
 import { PgClient } from '@effect/sql-pg'
@@ -10,6 +9,7 @@ import { PostgresError } from 'pg-error-enum'
 
 import type { DB } from '../generated/db.js'
 import { InternalError } from '../shared/errors.js'
+import { SessionCookie } from '../shared/sessionCookie.js'
 import { CookieSigner } from './services/cookie-signer.js'
 
 export { sql } from 'kysely'
@@ -83,10 +83,8 @@ export const withAuthContext = <A, E>(effect: Effect.Effect<A, E, any>) =>
 				() => new InternalError({ message: 'Database configuration error' }),
 			),
 		)
-		const req = yield* HttpServerRequest
-
-		// Get the signed session cookie and verify it
-		const signedSessionCookie = req.cookies['session']
+		const sessionCookie = yield* SessionCookie
+		const signedSessionCookie = yield* sessionCookie.read
 		const sessionId = signedSessionCookie
 			? yield* CookieSigner.verify(signedSessionCookie).pipe(
 					Effect.catchTag('InvalidCookieSignature', () => Effect.succeed(null)),

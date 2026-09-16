@@ -39,6 +39,7 @@ import {
 	OrganizationMember,
 	OrganizationInvitation,
 } from './schemas.js'
+import { SessionCookieHttp } from './sessionCookie.js'
 
 const idParam = HttpApiSchema.param('id', S.BigInt)
 const uuidParam = HttpApiSchema.param('id', S.UUID)
@@ -278,4 +279,5 @@ export const Contract = HttpApi.make('Contract')
 	.add(UsersGroup)
 	.add(EmailGroup)
 	.add(OrganizationsGroup)
+	.middleware(SessionCookieHttp)
 	.prefix('/api')

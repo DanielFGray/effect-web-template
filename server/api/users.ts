@@ -1,16 +1,16 @@
-import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
-import { HttpServerRequest } from '@effect/platform/HttpServerRequest'
-import { Effect, Config } from 'effect'
+import { HttpApiBuilder } from '@effect/platform'
+import { Effect } from 'effect'
 
 import { Contract } from '../../shared/httpApi.js'
+import { SessionCookie } from '../../shared/sessionCookie.js'
 import { withAuthContext } from '../db.js'
 import { CookieSigner } from '../services/cookie-signer.js'
 import { Sessions } from '../services/session.js'
 import { Users } from '../services/users.js'
 
 const whoami = Effect.gen(function* () {
-	const req = yield* HttpServerRequest
-	const signedSessionCookie = req.cookies['session']
+	const sessionCookie = yield* SessionCookie
+	const signedSessionCookie = yield* sessionCookie.read
 	if (!signedSessionCookie) return null
 
 	const sessionId = yield* CookieSigner.verify(signedSessionCookie).pipe(
@@ -23,47 +23,38 @@ const whoami = Effect.gen(function* () {
 	)
 })
 
-const withSessionCookie = Effect.fnUntraced(function* (
-	sessionId: string,
-	response: HttpServerResponse.HttpServerResponse,
-) {
-	const signedSessionId = yield* CookieSigner.sign(sessionId)
-	return yield* HttpServerResponse.setCookie(response, 'session', signedSessionId, {
-		httpOnly: true,
-		secure: (yield* Config.string('NODE_ENV')) === 'production',
-		sameSite: 'lax',
-		path: '/',
-		maxAge: '30 days',
-	})
-}, Effect.orDie)
-
 export const UsersApiGroupLive = HttpApiBuilder.group(Contract, 'users', (handlers) =>
 	handlers
 		.handle('me', () => whoami)
 		.handle(
 			'register',
 			Effect.fnUntraced(function* ({ payload }) {
+				const sessionCookie = yield* SessionCookie
 				const user = yield* Users.register(payload)
 				const session = yield* Sessions.createSession(user.id)
-				return yield* withSessionCookie(
-					session.uuid,
-					yield* HttpServerResponse.json(user, { status: 201 }).pipe(Effect.orDie),
-				)
+				yield* sessionCookie.write(session.uuid)
+				return user
 			}),
 		)
 		.handle(
 			'login',
 			Effect.fnUntraced(function* ({ payload }) {
+				const sessionCookie = yield* SessionCookie
 				const user = yield* Users.login(payload)
 				const session = yield* Sessions.createSession(user.id)
-				return yield* withSessionCookie(
-					session.uuid,
-					yield* HttpServerResponse.json(user).pipe(Effect.orDie),
-				)
+				yield* sessionCookie.write(session.uuid)
+				return user
 			}),
 		)
 		.handle('resetPassword', ({ payload }) => Users.resetPassword(payload))
-		.handle('logout', () => Users.logout().pipe(withAuthContext))
+		.handle(
+			'logout',
+			Effect.fnUntraced(function* () {
+				const sessionCookie = yield* SessionCookie
+				yield* Users.logout().pipe(withAuthContext)
+				yield* sessionCookie.clear
+			}),
+		)
 		.handle('requestDeletion', () => Users.requestAccountDeletion().pipe(withAuthContext))
 		.handle('confirmDeletion', ({ payload }) =>
 			Users.confirmAccountDeletion(payload).pipe(withAuthContext),

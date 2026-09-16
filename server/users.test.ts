@@ -162,6 +162,10 @@ suite('user registration HTTP flow', () => {
 				`${yield* baseUrl}/auth/logout`,
 			)
 			expect(logoutResponse.status).toBe(204)
+			const clearHeaders = Cookies.toSetCookieHeaders(logoutResponse.cookies)
+			expect(
+				clearHeaders.some((h) => h.startsWith('session=') && h.includes('Max-Age=0')),
+			).toBe(true)
 
 			// Try to use the session cookie for an authenticated request after logout
 			const result = yield* HttpClientRequest.patch(`${yield* baseUrl}/profile`).pipe(
