@@ -1,9 +1,41 @@
 import { useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { useAtomSet } from '@effect-atom/atom-react'
-import { Exit } from 'effect'
-import { ApiClient } from '../lib/api.js'
-import { Form, formResultFromExit, type FormResult } from '../components.js'
+import { createServerFn, useServerFn } from '@tanstack/react-start'
+import { Effect } from 'effect'
+import { callApi } from '../lib/api.server.js'
+import { Form, formResultFromError, type FormResult } from '../components.js'
+
+type ActionResult =
+	| { ok: true; data: null }
+	| { ok: false; error: FormResult }
+
+const verifyFn = createServerFn({ method: 'POST' })
+	.validator((data: { id: string; token: string }) => data)
+	.handler(({ data }): Promise<ActionResult> =>
+		callApi((api) =>
+			api.email
+				.verifyEmail({
+					path: { id: data.id },
+					payload: { token: data.token },
+				})
+				.pipe(
+					Effect.map((verified): ActionResult =>
+						verified
+							? { ok: true, data: null }
+							: {
+									ok: false,
+									error: { formErrors: ['Verification failed'] },
+								},
+					),
+					Effect.catchAll((err) =>
+						Effect.succeed({
+							ok: false as const,
+							error: formResultFromError(err),
+						}),
+					),
+				),
+		),
+	)
 
 export const Route = createFileRoute('/verify')({
 	validateSearch: (search: Record<string, unknown>) => ({
@@ -19,27 +51,19 @@ function Verify() {
 		id && token ? {} : { formErrors: ['Missing id or token'] },
 	)
 	const [verified, setVerified] = useState(false)
-	const verify = useAtomSet(ApiClient.mutation('email', 'verifyEmail'), {
-		mode: 'promiseExit',
-	})
+	const verify = useServerFn(verifyFn)
 
 	useEffect(() => {
 		if (!(id && token)) return
 		let cancelled = false
 		void (async () => {
-			const exit = await verify({
-				path: { id },
-				payload: { token },
-				reactivityKeys: ['emails', 'currentUser'],
-			})
+			const result = await verify({ data: { id, token } })
 			if (cancelled) return
-			if (Exit.isSuccess(exit) && exit.value) {
+			if (result.ok) {
 				setVerified(true)
 				setResponse({})
-			} else if (Exit.isFailure(exit)) {
-				setResponse(formResultFromExit(exit))
 			} else {
-				setResponse({ formErrors: ['Verification failed'] })
+				setResponse(result.error)
 			}
 		})()
 		return () => {

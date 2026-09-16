@@ -1,10 +1,32 @@
 import { useState } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useAtomSet } from '@effect-atom/atom-react'
-import { Exit, Schema } from 'effect'
-import { ApiClient } from '../lib/api.js'
-import { Form, formResultFromExit, type FormResult } from '../components.js'
-import { Password } from '../../shared/schemas.js'
+import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
+import { createServerFn, useServerFn } from '@tanstack/react-start'
+import { Effect } from 'effect'
+import { callApi } from '../lib/api.server.js'
+import { Form, formResultFromError, type FormResult } from '../components.js'
+import { isValidPassword } from '../../shared/validation.js'
+
+type ActionResult =
+	| { ok: true; data: null }
+	| { ok: false; error: FormResult }
+
+const resetFn = createServerFn({ method: 'POST' })
+	.validator(
+		(data: { userId: string; token: string; password: string }) => data,
+	)
+	.handler(({ data }): Promise<ActionResult> =>
+		callApi((api) =>
+			api.users.resetPassword({ payload: data }).pipe(
+				Effect.map((): ActionResult => ({ ok: true, data: null })),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+	)
 
 export const Route = createFileRoute('/reset')({
 	validateSearch: (search: Record<string, unknown>) => ({
@@ -17,15 +39,14 @@ export const Route = createFileRoute('/reset')({
 
 function ResetPass() {
 	const navigate = useNavigate()
+	const router = useRouter()
 	const { userId: userIdParam, token: tokenParam, redirectTo } = Route.useSearch()
 	const [userId, setUserId] = useState(userIdParam ?? '')
 	const [token, setToken] = useState(tokenParam ?? '')
 	const [password, setPassword] = useState('')
 	const [confirmPassword, setConfirmPassword] = useState('')
 	const [response, setResponse] = useState<FormResult>()
-	const reset = useAtomSet(ApiClient.mutation('users', 'resetPassword'), {
-		mode: 'promiseExit',
-	})
+	const reset = useServerFn(resetFn)
 
 	return (
 		<div>
@@ -41,8 +62,7 @@ function ResetPass() {
 						})
 						return
 					}
-					const passwordCheck = Schema.decodeUnknownEither(Password)(password)
-					if (passwordCheck._tag === 'Left') {
+					if (!isValidPassword(password)) {
 						setResponse({
 							fieldErrors: {
 								password: ['Password must be at least 8 characters'],
@@ -50,18 +70,18 @@ function ResetPass() {
 						})
 						return
 					}
-					const exit = await reset({
-						payload: {
+					const result = await reset({
+						data: {
 							userId,
 							token,
-							password: passwordCheck.right,
+							password,
 						},
-						reactivityKeys: ['currentUser'],
 					})
-					if (Exit.isSuccess(exit)) {
+					if (result.ok) {
+						await router.invalidate()
 						void navigate({ to: redirectTo || '/' })
 					} else {
-						setResponse(formResultFromExit(exit))
+						setResponse(result.error)
 					}
 				}}
 			>

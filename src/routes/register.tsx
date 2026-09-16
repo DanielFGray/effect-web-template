@@ -3,12 +3,39 @@ import {
 	createFileRoute,
 	Link,
 	useNavigate,
+	useRouter,
 } from '@tanstack/react-router'
-import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { Exit, Schema } from 'effect'
-import { ApiClient, currentUserAtom } from '../lib/api.js'
-import { Form, formResultFromExit, type FormResult } from '../components.js'
-import { Password, EmailSchema } from '../../shared/schemas.js'
+import { createServerFn, useServerFn } from '@tanstack/react-start'
+import { Effect } from 'effect'
+import { callApi } from '../lib/api.server.js'
+import { Form, formResultFromError, type FormResult } from '../components.js'
+import { isValidEmail, isValidPassword } from '../../shared/validation.js'
+
+type ActionResult =
+	| { ok: true; data: null }
+	| { ok: false; error: FormResult }
+
+const registerFn = createServerFn({ method: 'POST' })
+	.validator(
+		(data: {
+			username: string
+			password: string
+			email: string | null
+		}) => data,
+	)
+	.handler(({ data }): Promise<ActionResult> =>
+		callApi((api) =>
+			api.users.register({ payload: data }).pipe(
+				Effect.map((): ActionResult => ({ ok: true, data: null })),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+	)
 
 export const Route = createFileRoute('/register')({
 	validateSearch: (search: Record<string, unknown>) => ({
@@ -23,14 +50,13 @@ function Register() {
 	const [password, setPassword] = useState('')
 	const [confirmPassword, setConfirmPassword] = useState('')
 	const [response, setResponse] = useState<FormResult>()
-	const userResult = useAtomValue(currentUserAtom)
+	const { user } = Route.useRouteContext()
 	const navigate = useNavigate()
+	const router = useRouter()
 	const { redirectTo } = Route.useSearch()
-	const register = useAtomSet(ApiClient.mutation('users', 'register'), {
-		mode: 'promiseExit',
-	})
+	const register = useServerFn(registerFn)
 
-	if (Result.isSuccess(userResult) && userResult.value) {
+	if (user) {
 		void navigate({ to: redirectTo || '/' })
 		return null
 	}
@@ -51,8 +77,7 @@ function Register() {
 						return
 					}
 
-					const passwordCheck = Schema.decodeUnknownEither(Password)(password)
-					if (passwordCheck._tag === 'Left') {
+					if (!isValidPassword(password)) {
 						setResponse({
 							fieldErrors: {
 								password: ['Password must be at least 8 characters'],
@@ -63,28 +88,27 @@ function Register() {
 
 					let emailPayload: string | null = null
 					if (email.trim() !== '') {
-						const emailCheck = Schema.decodeUnknownEither(EmailSchema)(email)
-						if (emailCheck._tag === 'Left') {
+						if (!isValidEmail(email)) {
 							setResponse({
 								fieldErrors: { email: ['Invalid email address'] },
 							})
 							return
 						}
-						emailPayload = emailCheck.right
+						emailPayload = email
 					}
 
-					const exit = await register({
-						payload: {
+					const result = await register({
+						data: {
 							username,
-							password: passwordCheck.right,
+							password,
 							email: emailPayload,
 						},
-						reactivityKeys: ['currentUser'],
 					})
-					if (Exit.isSuccess(exit)) {
+					if (result.ok) {
+						await router.invalidate()
 						void navigate({ to: redirectTo || '/' })
 					} else {
-						setResponse(formResultFromExit(exit))
+						setResponse(result.error)
 					}
 				}}
 			>

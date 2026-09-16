@@ -81,6 +81,8 @@
     "cypress": "^15.21.1",
     "kysely-codegen": "^0.20.0",
     "mprocs": "^0.9.6",
+    "oxfmt": "^0.68.0",
+    "oxlint": "^1.83.0",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.0",

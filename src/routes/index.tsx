@@ -1,28 +1,87 @@
 import { useState } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { Exit } from 'effect'
-import { ApiClient, currentUserAtom, postsListAtom } from '../lib/api.js'
+import {
+	createFileRoute,
+	Link,
+	useRouter,
+	type ErrorComponentProps,
+} from '@tanstack/react-router'
+import { createServerFn, useServerFn } from '@tanstack/react-start'
+import { Effect } from 'effect'
+import { callApi } from '../lib/api.server.js'
 import {
 	Form,
 	Spinner,
 	UnverifiedAccountWarning,
-	formResultFromExit,
+	formResultFromError,
 	type FormResult,
 } from '../components.js'
 
+type ActionResult<T = null> =
+	| { ok: true; data: T }
+	| { ok: false; error: FormResult }
+
+type FeedPost = {
+	id: string
+	body: string
+	privacy: 'public' | 'secret' | 'private'
+	user: { username: string | null; avatar_url: string | null }
+}
+
+const getPosts = createServerFn({ method: 'GET' }).handler(async () => {
+	const posts = await callApi((api) => api.posts.list({ urlParams: {} }))
+	return posts.map(
+		(post): FeedPost => ({
+			id: String(post.id),
+			body: post.body,
+			privacy: post.privacy,
+			user: post.user,
+		}),
+	)
+})
+
+const createPostFn = createServerFn({ method: 'POST' })
+	.validator((data: { body: string; privacy: 'public' | 'private' | 'secret' }) => data)
+	.handler(({ data }): Promise<ActionResult<{ id: string }>> =>
+		callApi((api) =>
+			api.posts.create({ payload: data }).pipe(
+				Effect.map(
+					(created): ActionResult<{ id: string }> => ({
+						ok: true,
+						data: { id: String(created.id) },
+					}),
+				),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+	)
+
 export const Route = createFileRoute('/')({
+	loader: (): Promise<ReadonlyArray<FeedPost>> => getPosts(),
+	pendingComponent: Pending,
+	errorComponent: RouteError,
 	component: Home,
 })
 
-function Home() {
-	const userResult = useAtomValue(currentUserAtom)
-	const postsResult = useAtomValue(postsListAtom)
+function Pending() {
+	return <Spinner />
+}
 
-	const user = Result.isSuccess(userResult) ? userResult.value : null
-	const postsLoading =
-		Result.isInitial(postsResult) ||
-		(Result.isWaiting(postsResult) && !Result.isSuccess(postsResult))
+function RouteError({ error }: ErrorComponentProps) {
+	return (
+		<div className="field-error">
+			{error instanceof Error ? error.message : 'Failed to load posts'}
+		</div>
+	)
+}
+
+function Home() {
+	const { user } = Route.useRouteContext()
+	const posts: ReadonlyArray<FeedPost> = Route.useLoaderData()
 
 	return (
 		<>
@@ -35,26 +94,18 @@ function Home() {
 					<Link to="/login">Log in</Link> to create a post.
 				</p>
 			)}
-			{postsLoading ? (
-				<Spinner />
-			) : Result.isFailure(postsResult) ? (
-				<div className="field-error">Failed to load posts</div>
-			) : Result.isSuccess(postsResult) ? (
-				<ul data-cy="posts-list">
-					{postsResult.value.map((post) => (
-						<li key={String(post.id)} data-cy="post-item">
-							<div>
-								<strong>{post.user.username ?? 'anonymous'}</strong>
-								{' · '}
-								<small>{String(post.privacy)}</small>
-							</div>
-							<p>{post.body}</p>
-						</li>
-					))}
-				</ul>
-			) : (
-				<Spinner />
-			)}
+			<ul data-cy="posts-list">
+				{posts.map((post) => (
+					<li key={post.id} data-cy="post-item">
+						<div>
+							<strong>{post.user.username ?? 'anonymous'}</strong>
+							{' · '}
+							<small>{post.privacy}</small>
+						</div>
+						<p>{post.body}</p>
+					</li>
+				))}
+			</ul>
 		</>
 	)
 }
@@ -63,9 +114,8 @@ function NewPost() {
 	const [body, setBody] = useState('')
 	const [privacy, setPrivacy] = useState<'public' | 'private' | 'secret'>('public')
 	const [response, setResponse] = useState<FormResult>()
-	const createPost = useAtomSet(ApiClient.mutation('posts', 'create'), {
-		mode: 'promiseExit',
-	})
+	const createPost = useServerFn(createPostFn)
+	const router = useRouter()
 
 	return (
 		<Form
@@ -74,15 +124,13 @@ function NewPost() {
 			onSubmit={async (ev) => {
 				ev.preventDefault()
 				setResponse(undefined)
-				const exit = await createPost({
-					payload: { body, privacy },
-					reactivityKeys: ['posts'],
-				})
-				if (Exit.isSuccess(exit)) {
+				const result = await createPost({ data: { body, privacy } })
+				if (result.ok) {
 					setBody('')
 					setResponse(undefined)
+					await router.invalidate()
 				} else {
-					setResponse(formResultFromExit(exit))
+					setResponse(result.error)
 				}
 			}}
 		>

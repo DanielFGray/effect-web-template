@@ -106,8 +106,6 @@ export function Spinner() {
 	return <>loading...</>
 }
 
-import { Cause, Exit, Option } from 'effect'
-
 /** Map a failed mutation/query error into form display fields. */
 export function formResultFromError(error: {
 	readonly message?: string
@@ -120,22 +118,4 @@ export function formResultFromError(error: {
 		return { formErrors: [error.message] }
 	}
 	return { formErrors: ['Something went wrong'] }
-}
-
-export function formResultFromExit(exit: Exit.Exit<unknown, unknown>): FormResult {
-	if (!Exit.isFailure(exit)) {
-		return { formErrors: ['Something went wrong'] }
-	}
-	const failure = Cause.failureOption(exit.cause)
-	if (Option.isNone(failure)) {
-		return { formErrors: ['Something went wrong'] }
-	}
-	const err = failure.value
-	if (err && typeof err === 'object') {
-		if ('message' in err && typeof (err as { message: unknown }).message === 'string') {
-			return formResultFromError(err as { message: string; field?: string })
-		}
-		return { formErrors: [String(err)] }
-	}
-	return { formErrors: [String(err)] }
 }

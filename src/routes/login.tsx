@@ -3,11 +3,32 @@ import {
 	createFileRoute,
 	Link,
 	useNavigate,
+	useRouter,
 } from '@tanstack/react-router'
-import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { Exit } from 'effect'
-import { ApiClient, currentUserAtom } from '../lib/api.js'
-import { Form, formResultFromExit, type FormResult } from '../components.js'
+import { createServerFn, useServerFn } from '@tanstack/react-start'
+import { Effect } from 'effect'
+import { callApi } from '../lib/api.server.js'
+import { Form, formResultFromError, type FormResult } from '../components.js'
+
+type ActionResult =
+	| { ok: true; data: null }
+	| { ok: false; error: FormResult }
+
+const loginFn = createServerFn({ method: 'POST' })
+	.validator((data: { id: string; password: string }) => data)
+	.handler(({ data }): Promise<ActionResult> =>
+		callApi((api) =>
+			api.users.login({ payload: data }).pipe(
+				Effect.map((): ActionResult => ({ ok: true, data: null })),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+	)
 
 export const Route = createFileRoute('/login')({
 	validateSearch: (search: Record<string, unknown>) => ({
@@ -20,14 +41,13 @@ function Login() {
 	const [id, setId] = useState('')
 	const [password, setPassword] = useState('')
 	const [response, setResponse] = useState<FormResult>()
-	const userResult = useAtomValue(currentUserAtom)
+	const { user } = Route.useRouteContext()
 	const navigate = useNavigate()
+	const router = useRouter()
 	const { redirectTo } = Route.useSearch()
-	const login = useAtomSet(ApiClient.mutation('users', 'login'), {
-		mode: 'promiseExit',
-	})
+	const login = useServerFn(loginFn)
 
-	if (Result.isSuccess(userResult) && userResult.value) {
+	if (user) {
 		void navigate({ to: redirectTo || '/' })
 		return null
 	}
@@ -40,14 +60,12 @@ function Login() {
 				onSubmit={async (ev) => {
 					ev.preventDefault()
 					setResponse(undefined)
-					const exit = await login({
-						payload: { id, password },
-						reactivityKeys: ['currentUser'],
-					})
-					if (Exit.isSuccess(exit)) {
+					const result = await login({ data: { id, password } })
+					if (result.ok) {
+						await router.invalidate()
 						void navigate({ to: redirectTo || '/' })
 					} else {
-						setResponse(formResultFromExit(exit))
+						setResponse(result.error)
 					}
 				}}
 			>

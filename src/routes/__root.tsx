@@ -6,11 +6,16 @@ import {
 	Scripts,
 	Link,
 } from '@tanstack/react-router'
-import { RegistryProvider, Result, useAtomValue } from '@effect-atom/atom-react'
-import { currentUserAtom } from '../lib/api.js'
+import { createServerFn } from '@tanstack/react-start'
+import { callApi } from '../lib/api.server.js'
 import '../styles.css'
 
+const getCurrentUser = createServerFn({ method: 'GET' }).handler(() =>
+	callApi((api) => api.users.me()),
+)
+
 export const Route = createRootRoute({
+	beforeLoad: async () => ({ user: await getCurrentUser() }),
 	head: () => ({
 		meta: [
 			{
@@ -37,8 +42,7 @@ function RootComponent() {
 }
 
 function Nav() {
-	const userResult = useAtomValue(currentUserAtom)
-	const user = Result.isSuccess(userResult) ? userResult.value : null
+	const { user } = Route.useRouteContext()
 
 	return (
 		<nav data-cy="nav">
@@ -104,10 +108,8 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
 				<HeadContent />
 			</head>
 			<body>
-				<RegistryProvider>
-					<Nav />
-					{children}
-				</RegistryProvider>
+				<Nav />
+				{children}
 				<Scripts />
 			</body>
 		</html>

@@ -1,10 +1,30 @@
 import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { useAtomSet } from '@effect-atom/atom-react'
-import { Exit, Schema } from 'effect'
-import { ApiClient } from '../lib/api.js'
-import { Form, formResultFromExit, type FormResult } from '../components.js'
-import { EmailSchema } from '../../shared/schemas.js'
+import { createServerFn, useServerFn } from '@tanstack/react-start'
+import { Effect } from 'effect'
+import { callApi } from '../lib/api.server.js'
+import { Form, formResultFromError, type FormResult } from '../components.js'
+import { isValidEmail } from '../../shared/validation.js'
+
+type ActionResult =
+	| { ok: true; data: null }
+	| { ok: false; error: FormResult }
+
+const forgotFn = createServerFn({ method: 'POST' })
+	.validator((data: { email: string }) => data)
+	.handler(({ data }): Promise<ActionResult> =>
+		callApi((api) =>
+			api.users.forgotPassword({ payload: data }).pipe(
+				Effect.map((): ActionResult => ({ ok: true, data: null })),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+	)
 
 export const Route = createFileRoute('/forgot')({
 	component: ForgotPassword,
@@ -14,9 +34,7 @@ function ForgotPassword() {
 	const [email, setEmail] = useState('')
 	const [response, setResponse] = useState<FormResult>()
 	const [done, setDone] = useState(false)
-	const forgot = useAtomSet(ApiClient.mutation('users', 'forgotPassword'), {
-		mode: 'promiseExit',
-	})
+	const forgot = useServerFn(forgotFn)
 
 	if (done) {
 		return (
@@ -36,18 +54,17 @@ function ForgotPassword() {
 			onSubmit={async (ev) => {
 				ev.preventDefault()
 				setResponse(undefined)
-				const emailCheck = Schema.decodeUnknownEither(EmailSchema)(email)
-				if (emailCheck._tag === 'Left') {
+				if (!isValidEmail(email)) {
 					setResponse({ fieldErrors: { email: ['Invalid email address'] } })
 					return
 				}
-				const exit = await forgot({
-					payload: { email: emailCheck.right },
+				const result = await forgot({
+					data: { email },
 				})
-				if (Exit.isSuccess(exit)) {
+				if (result.ok) {
 					setDone(true)
 				} else {
-					setResponse(formResultFromExit(exit))
+					setResponse(result.error)
 				}
 			}}
 		>

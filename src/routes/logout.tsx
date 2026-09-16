@@ -1,8 +1,28 @@
 import { useEffect } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useAtomSet } from '@effect-atom/atom-react'
-import { ApiClient } from '../lib/api.js'
-import { Spinner } from '../components.js'
+import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
+import { createServerFn, useServerFn } from '@tanstack/react-start'
+import { Effect } from 'effect'
+import { callApi } from '../lib/api.server.js'
+import { formResultFromError, Spinner, type FormResult } from '../components.js'
+
+type ActionResult =
+	| { ok: true; data: null }
+	| { ok: false; error: FormResult }
+
+const logoutFn = createServerFn({ method: 'POST' }).handler(
+	(): Promise<ActionResult> =>
+		callApi((api) =>
+			api.users.logout().pipe(
+				Effect.map((): ActionResult => ({ ok: true, data: null })),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+)
 
 export const Route = createFileRoute('/logout')({
 	component: Logout,
@@ -10,22 +30,22 @@ export const Route = createFileRoute('/logout')({
 
 function Logout() {
 	const navigate = useNavigate()
-	const logout = useAtomSet(ApiClient.mutation('users', 'logout'), {
-		mode: 'promiseExit',
-	})
+	const router = useRouter()
+	const logout = useServerFn(logoutFn)
 
 	useEffect(() => {
 		let cancelled = false
 		void (async () => {
-			await logout({ reactivityKeys: ['currentUser'] })
+			await logout()
 			if (!cancelled) {
+				await router.invalidate()
 				void navigate({ to: '/' })
 			}
 		})()
 		return () => {
 			cancelled = true
 		}
-	}, [logout, navigate])
+	}, [logout, navigate, router])
 
 	return <Spinner />
 }

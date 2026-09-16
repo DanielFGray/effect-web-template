@@ -1,69 +1,230 @@
 import { useState } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { Exit, Schema } from 'effect'
 import {
-	ApiClient,
-	currentUserAtom,
-	emailsListAtom,
-} from '../lib/api.js'
+	createFileRoute,
+	redirect,
+	useNavigate,
+	useRouter,
+	type ErrorComponentProps,
+} from '@tanstack/react-router'
+import { createServerFn, useServerFn } from '@tanstack/react-start'
+import { Effect } from 'effect'
+import { callApi } from '../lib/api.server.js'
 import {
 	Form,
 	Spinner,
 	UnverifiedAccountWarning,
-	formResultFromExit,
+	formResultFromError,
 	type FormResult,
 } from '../components.js'
-import {
-	EmailSchema,
-	Password,
-	AuthenticatedUser,
-	UserEmail,
-} from '../../shared/schemas.js'
+import { isValidEmail, isValidPassword } from '../../shared/validation.js'
 
-type AuthUser = Schema.Schema.Type<typeof AuthenticatedUser>
-type EmailRowData = UserEmail
+type ActionResult<T = null> =
+	| { ok: true; data: T }
+	| { ok: false; error: FormResult }
+
+type EmailRowData = {
+	id: string
+	email: string
+	is_verified: boolean
+	is_primary: boolean
+	created_at: string
+}
+
+const getEmails = createServerFn({ method: 'GET' }).handler(async () => {
+	const emails = await callApi((api) => api.email.list())
+	return emails.map(
+		(email): EmailRowData => ({
+			id: email.id,
+			email: email.email,
+			is_verified: email.is_verified,
+			is_primary: email.is_primary,
+			created_at:
+				email.created_at instanceof Date
+					? email.created_at.toISOString()
+					: String(email.created_at),
+		}),
+	)
+})
+
+const updateProfileFn = createServerFn({ method: 'POST' })
+	.validator(
+		(data: {
+			username: string
+			name: string | null
+			avatar_url: string | null
+			bio: string | null
+		}) => data,
+	)
+	.handler(({ data }): Promise<ActionResult> =>
+		callApi((api) =>
+			api.users.updateProfile({ payload: data }).pipe(
+				Effect.as({ ok: true as const, data: null }),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+	)
+
+const changePasswordFn = createServerFn({ method: 'POST' })
+	.validator((data: { oldPassword: string; newPassword: string }) => data)
+	.handler(({ data }): Promise<ActionResult> =>
+		callApi((api) =>
+			api.users.changePassword({ payload: data }).pipe(
+				Effect.as({ ok: true as const, data: null }),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+	)
+
+const addEmailFn = createServerFn({ method: 'POST' })
+	.validator((data: { email: string }) => data)
+	.handler(({ data }): Promise<ActionResult> =>
+		callApi((api) =>
+			api.email.addEmail({ payload: data }).pipe(
+				Effect.as({ ok: true as const, data: null }),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+	)
+
+const resendVerificationFn = createServerFn({ method: 'POST' })
+	.validator((data: { id: string }) => data)
+	.handler(({ data }): Promise<ActionResult> =>
+		callApi((api) =>
+			api.email.resendVerification({ path: { id: data.id } }).pipe(
+				Effect.as({ ok: true as const, data: null }),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+	)
+
+const removeEmailFn = createServerFn({ method: 'POST' })
+	.validator((data: { id: string }) => data)
+	.handler(({ data }): Promise<ActionResult> =>
+		callApi((api) =>
+			api.email.removeEmail({ path: { id: data.id } }).pipe(
+				Effect.as({ ok: true as const, data: null }),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+	)
+
+const makeEmailPrimaryFn = createServerFn({ method: 'POST' })
+	.validator((data: { id: string }) => data)
+	.handler(({ data }): Promise<ActionResult> =>
+		callApi((api) =>
+			api.email.makeEmailPrimary({ path: { id: data.id } }).pipe(
+				Effect.as({ ok: true as const, data: null }),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+	)
+
+const requestDeletionFn = createServerFn({ method: 'POST' }).handler(
+	(): Promise<ActionResult> =>
+		callApi((api) =>
+			api.users.requestDeletion().pipe(
+				Effect.as({ ok: true as const, data: null }),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
+				),
+			),
+		),
+)
+
+const confirmDeletionFn = createServerFn({ method: 'POST' })
+	.validator((data: { token: string }) => data)
+	.handler(
+		({ data }): Promise<ActionResult<{ confirm_account_deletion: boolean }>> =>
+			callApi((api) =>
+				api.users.confirmDeletion({ payload: data }).pipe(
+					Effect.map(
+						(result): ActionResult<{ confirm_account_deletion: boolean }> => ({
+							ok: true,
+							data: result,
+						}),
+					),
+					Effect.catchAll((err) =>
+						Effect.succeed({
+							ok: false as const,
+							error: formResultFromError(err),
+						}),
+					),
+				),
+			),
+	)
 
 export const Route = createFileRoute('/settings')({
 	validateSearch: (search: Record<string, unknown>) => ({
-		delete_token:
-			typeof search.delete_token === 'string' ? search.delete_token : undefined,
+		delete_token: typeof search.delete_token === 'string' ? search.delete_token : undefined,
 		showAddEmail: search.showAddEmail != null ? String(search.showAddEmail) : undefined,
 	}),
+	beforeLoad: ({ context }) => {
+		if (!context.user) throw redirect({ to: '/login' })
+	},
+	loader: () => getEmails(),
+	pendingComponent: Pending,
+	errorComponent: RouteError,
 	component: Settings,
 })
 
+type AuthUser = NonNullable<ReturnType<typeof Route.useRouteContext>['user']>
+
+function Pending() {
+	return <Spinner />
+}
+
+function RouteError({ error }: ErrorComponentProps) {
+	return (
+		<div className="field-error">
+			{error instanceof Error ? error.message : 'Failed to load settings'}
+		</div>
+	)
+}
+
 function Settings() {
-	const userResult = useAtomValue(currentUserAtom)
-	const emailsResult = useAtomValue(emailsListAtom)
-	const navigate = useNavigate()
+	const { user } = Route.useRouteContext()
+	const emails = Route.useLoaderData()
 
-	if (Result.isInitial(userResult) || Result.isWaiting(userResult)) {
-		return <Spinner />
-	}
-	if (!Result.isSuccess(userResult) || !userResult.value) {
-		void navigate({ to: '/login', search: { redirectTo: '/settings' } })
-		return null
-	}
-
-	const user = userResult.value
-	const emailsLoading =
-		Result.isInitial(emailsResult) ||
-		(Result.isWaiting(emailsResult) && !Result.isSuccess(emailsResult))
+	if (!user) return null
 
 	return (
 		<>
 			<ProfileSettings currentUser={user} />
 			<PasswordSettings />
-			{emailsLoading ? (
-				<Spinner />
-			) : Result.isFailure(emailsResult) ? (
-				<div className="field-error">Failed to load emails</div>
-			) : Result.isSuccess(emailsResult) ? (
-				<EmailSettings currentUser={user} emails={emailsResult.value} />
-			) : (
-				<Spinner />
-			)}
+			<EmailSettings currentUser={user} emails={emails} />
 			<DeleteAccount />
 		</>
 	)
@@ -75,9 +236,8 @@ function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
 	const [avatarUrl, setAvatarUrl] = useState(currentUser.avatar_url ?? '')
 	const [bio, setBio] = useState('')
 	const [response, setResponse] = useState<FormResult>()
-	const updateProfile = useAtomSet(ApiClient.mutation('users', 'updateProfile'), {
-		mode: 'promiseExit',
-	})
+	const updateProfile = useServerFn(updateProfileFn)
+	const router = useRouter()
 
 	return (
 		<Form
@@ -86,17 +246,18 @@ function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
 			onSubmit={async (ev) => {
 				ev.preventDefault()
 				setResponse(undefined)
-				const exit = await updateProfile({
-					payload: {
+				const result = await updateProfile({
+					data: {
 						username,
 						name: name.trim() === '' ? null : name,
 						avatar_url: avatarUrl.trim() === '' ? null : avatarUrl,
 						bio: bio.trim() === '' ? null : bio,
 					},
-					reactivityKeys: ['currentUser'],
 				})
-				if (Exit.isFailure(exit)) {
-					setResponse(formResultFromExit(exit))
+				if (result.ok) {
+					await router.invalidate()
+				} else {
+					setResponse(result.error)
 				}
 			}}
 		>
@@ -108,12 +269,7 @@ function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
 					value={username}
 					onChange={(e) => setUsername(e.target.value)}
 				/>
-				<Form.Row
-					name="name"
-					type="text"
-					value={name}
-					onChange={(e) => setName(e.target.value)}
-				/>
+				<Form.Row name="name" type="text" value={name} onChange={(e) => setName(e.target.value)} />
 				<Form.Row
 					label="avatar"
 					name="avatar_url"
@@ -121,12 +277,7 @@ function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
 					value={avatarUrl}
 					onChange={(e) => setAvatarUrl(e.target.value)}
 				/>
-				<Form.Row
-					name="bio"
-					type="textarea"
-					value={bio}
-					onChange={(e) => setBio(e.target.value)}
-				/>
+				<Form.Row name="bio" type="textarea" value={bio} onChange={(e) => setBio(e.target.value)} />
 				<div>
 					<Form.Errors />
 					<button type="submit">update</button>
@@ -141,9 +292,7 @@ function PasswordSettings() {
 	const [password, setPassword] = useState('')
 	const [confirmPassword, setConfirmPassword] = useState('')
 	const [response, setResponse] = useState<FormResult>()
-	const changePassword = useAtomSet(ApiClient.mutation('users', 'changePassword'), {
-		mode: 'promiseExit',
-	})
+	const changePassword = useServerFn(changePasswordFn)
 
 	return (
 		<Form
@@ -158,8 +307,7 @@ function PasswordSettings() {
 					})
 					return
 				}
-				const passwordCheck = Schema.decodeUnknownEither(Password)(password)
-				if (passwordCheck._tag === 'Left') {
+				if (!isValidPassword(password)) {
 					setResponse({
 						fieldErrors: {
 							password: ['Password must be at least 8 characters'],
@@ -167,19 +315,19 @@ function PasswordSettings() {
 					})
 					return
 				}
-				const exit = await changePassword({
-					payload: {
+				const result = await changePassword({
+					data: {
 						oldPassword,
-						newPassword: passwordCheck.right,
+						newPassword: password,
 					},
 				})
-				if (Exit.isSuccess(exit)) {
+				if (result.ok) {
 					setOldPassword('')
 					setPassword('')
 					setConfirmPassword('')
 					setResponse({ formMessages: ['Password updated'] })
 				} else {
-					setResponse(formResultFromExit(exit))
+					setResponse(result.error)
 				}
 			}}
 			data-cy="settings-password-form"
@@ -237,11 +385,7 @@ function EmailSettings({
 			<legend>email settings</legend>
 			<ul data-cy="email-settings-list">
 				{emails.map((email) => (
-					<EmailRow
-						key={email.id}
-						email={email}
-						hasOtherEmails={emails.length > 1}
-					/>
+					<EmailRow key={email.id} email={email} hasOtherEmails={emails.length > 1} />
 				))}
 			</ul>
 			<div>
@@ -252,24 +396,13 @@ function EmailSettings({
 	)
 }
 
-function EmailRow({
-	email,
-	hasOtherEmails,
-}: {
-	email: EmailRowData
-	hasOtherEmails: boolean
-}) {
+function EmailRow({ email, hasOtherEmails }: { email: EmailRowData; hasOtherEmails: boolean }) {
 	const [response, setResponse] = useState<FormResult>()
 	const canDelete = !email.is_primary && hasOtherEmails
-	const resend = useAtomSet(ApiClient.mutation('email', 'resendVerification'), {
-		mode: 'promiseExit',
-	})
-	const remove = useAtomSet(ApiClient.mutation('email', 'removeEmail'), {
-		mode: 'promiseExit',
-	})
-	const makePrimary = useAtomSet(ApiClient.mutation('email', 'makeEmailPrimary'), {
-		mode: 'promiseExit',
-	})
+	const resend = useServerFn(resendVerificationFn)
+	const remove = useServerFn(removeEmailFn)
+	const makePrimary = useServerFn(makeEmailPrimaryFn)
+	const router = useRouter()
 
 	return (
 		<li
@@ -301,34 +434,25 @@ function EmailRow({
 					setResponse(undefined)
 					const submitter = (ev.nativeEvent as SubmitEvent).submitter
 					const type =
-						submitter instanceof HTMLButtonElement
-							? submitter.getAttribute('value')
-							: null
-					let exit: Exit.Exit<unknown, unknown>
+						submitter instanceof HTMLButtonElement ? submitter.getAttribute('value') : null
+					let result: ActionResult
 					switch (type) {
 						case 'resendValidation':
-							exit = await resend({
-								path: { id: email.id },
-								reactivityKeys: ['emails'],
-							})
+							result = await resend({ data: { id: email.id } })
 							break
 						case 'deleteEmail':
-							exit = await remove({
-								path: { id: email.id },
-								reactivityKeys: ['emails'],
-							})
+							result = await remove({ data: { id: email.id } })
 							break
 						case 'makePrimary':
-							exit = await makePrimary({
-								path: { id: email.id },
-								reactivityKeys: ['emails'],
-							})
+							result = await makePrimary({ data: { id: email.id } })
 							break
 						default:
 							return
 					}
-					if (Exit.isFailure(exit)) {
-						setResponse(formResultFromExit(exit))
+					if (result.ok) {
+						await router.invalidate()
+					} else {
+						setResponse(result.error)
 					}
 				}}
 			>
@@ -373,9 +497,8 @@ function AddEmailForm() {
 	const [showForm, setShowForm] = useState(Boolean(showAddEmail))
 	const [email, setEmail] = useState('')
 	const [response, setResponse] = useState<FormResult>()
-	const addEmail = useAtomSet(ApiClient.mutation('email', 'addEmail'), {
-		mode: 'promiseExit',
-	})
+	const addEmail = useServerFn(addEmailFn)
+	const router = useRouter()
 
 	if (!showForm) {
 		return (
@@ -405,20 +528,19 @@ function AddEmailForm() {
 			onSubmit={async (ev) => {
 				ev.preventDefault()
 				setResponse(undefined)
-				const emailCheck = Schema.decodeUnknownEither(EmailSchema)(email)
-				if (emailCheck._tag === 'Left') {
+				if (!isValidEmail(email)) {
 					setResponse({ fieldErrors: { email: ['Invalid email address'] } })
 					return
 				}
-				const exit = await addEmail({
-					payload: { email: emailCheck.right },
-					reactivityKeys: ['emails', 'currentUser'],
+				const result = await addEmail({
+					data: { email },
 				})
-				if (Exit.isSuccess(exit)) {
+				if (result.ok) {
 					setEmail('')
 					setShowForm(false)
+					await router.invalidate()
 				} else {
-					setResponse(formResultFromExit(exit))
+					setResponse(result.error)
 				}
 			}}
 		>
@@ -444,12 +566,8 @@ function DeleteAccount() {
 	const [requested, setRequested] = useState(false)
 	const { delete_token: token } = Route.useSearch()
 	const navigate = useNavigate()
-	const requestDeletion = useAtomSet(ApiClient.mutation('users', 'requestDeletion'), {
-		mode: 'promiseExit',
-	})
-	const confirmDeletion = useAtomSet(ApiClient.mutation('users', 'confirmDeletion'), {
-		mode: 'promiseExit',
-	})
+	const requestDeletion = useServerFn(requestDeletionFn)
+	const confirmDeletion = useServerFn(confirmDeletionFn)
 
 	if (token) {
 		return (
@@ -457,23 +575,20 @@ function DeleteAccount() {
 				onSubmit={async (ev) => {
 					ev.preventDefault()
 					setResponse(undefined)
-					const exit = await confirmDeletion({
-						payload: { token },
-						reactivityKeys: ['currentUser'],
-					})
-					if (Exit.isSuccess(exit) && exit.value.confirm_account_deletion) {
+					const result = await confirmDeletion({ data: { token } })
+					if (result.ok && result.data.confirm_account_deletion) {
 						void navigate({ to: '/' })
-					} else if (Exit.isFailure(exit)) {
-						setResponse(formResultFromExit(exit))
+					} else if (!result.ok) {
+						setResponse(result.error)
 					}
 				}}
 			>
 				<fieldset>
 					<legend>danger zone</legend>
 					<p>
-						This is it. <b>Press this button and your account will be deleted.</b>{' '}
-						We&apos;re sorry to see you go, please don&apos;t hesitate to reach out
-						and let us know why you no longer want your account.
+						This is it. <b>Press this button and your account will be deleted.</b> We&apos;re sorry
+						to see you go, please don&apos;t hesitate to reach out and let us know why you no longer
+						want your account.
 					</p>
 					{response?.formErrors?.map((e) => (
 						<div className="field-error" key={e}>
@@ -495,9 +610,8 @@ function DeleteAccount() {
 			<fieldset>
 				<legend>danger zone</legend>
 				<div>
-					You&apos;ve been sent an email with a confirmation link in it, you must
-					click it to confirm that you are the account holder so that you may
-					continue deleting your account.
+					You&apos;ve been sent an email with a confirmation link in it, you must click it to
+					confirm that you are the account holder so that you may continue deleting your account.
 				</div>
 			</fieldset>
 		)
@@ -508,11 +622,11 @@ function DeleteAccount() {
 			onSubmit={async (ev) => {
 				ev.preventDefault()
 				setResponse(undefined)
-				const exit = await requestDeletion({})
-				if (Exit.isSuccess(exit)) {
+				const result = await requestDeletion()
+				if (result.ok) {
 					setRequested(true)
 				} else {
-					setResponse(formResultFromExit(exit))
+					setResponse(result.error)
 				}
 			}}
 		>
@@ -524,11 +638,7 @@ function DeleteAccount() {
 							{e}
 						</div>
 					))}
-					<button
-						type="submit"
-						name="submit"
-						data-cy="account-delete-request-button"
-					>
+					<button type="submit" name="submit" data-cy="account-delete-request-button">
 						I want to delete my account
 					</button>
 				</div>
