@@ -4,7 +4,7 @@ import { Config, Effect, Layer, Schema as S } from 'effect'
 import { InternalError } from '../shared/errors.js'
 import { Contract } from '../shared/httpApi.js'
 import { PgRootDB } from './db.js'
-import { catchSql } from './db.js'
+import { fromSql } from './db.js'
 import { Users } from './services/users.js'
 
 const TestingApiGroup = HttpApiGroup.make('TestingApi')
@@ -77,7 +77,7 @@ export const TestingApiGroupLive = HttpApiBuilder.group(
 						yield* db
 							.deleteFrom('app_public.users')
 							.where('username', 'like', 'testuser%')
-							.pipe(catchSql)
+							.pipe(fromSql)
 						return { success: true }
 					}),
 				)
@@ -86,7 +86,7 @@ export const TestingApiGroupLive = HttpApiBuilder.group(
 						yield* db
 							.deleteFrom('app_public.organizations')
 							.where('slug', 'like', 'test%')
-							.pipe(catchSql)
+							.pipe(fromSql)
 						return { success: true }
 					}),
 				)
@@ -103,7 +103,7 @@ export const TestingApiGroupLive = HttpApiBuilder.group(
 							})
 							.pipe(
 								Effect.head,
-								catchSql,
+								fromSql,
 								Effect.mapError((error) =>
 									error._tag === 'NoSuchElementException'
 										? new InternalError({ message: 'User creation failed' })
@@ -127,7 +127,7 @@ export const TestingApiGroupLive = HttpApiBuilder.group(
 							)
 							.pipe(
 								Effect.head,
-								catchSql,
+								fromSql,
 								Effect.mapError((error) =>
 									error._tag === 'NoSuchElementException'
 										? new InternalError({ message: 'Email secrets not found' })
@@ -156,7 +156,7 @@ export const TestingApiGroupLive = HttpApiBuilder.group(
 						)
 						.pipe(
 							Effect.head,
-							catchSql,
+							fromSql,
 							Effect.mapError((error) =>
 								error._tag === 'NoSuchElementException'
 									? new InternalError({ message: 'User secrets not found' })
@@ -178,7 +178,7 @@ export const TestingApiGroupLive = HttpApiBuilder.group(
 						)
 						.pipe(
 							Effect.head,
-							catchSql,
+							fromSql,
 							Effect.mapError((error) =>
 								error._tag === 'NoSuchElementException'
 									? new InternalError({ message: 'Email secrets not found' })
@@ -192,7 +192,7 @@ export const TestingApiGroupLive = HttpApiBuilder.group(
 							.updateTable('app_public.users')
 							.set({ is_verified: true })
 							.where('username', '=', payload.username)
-							.pipe(catchSql)
+							.pipe(fromSql)
 						return { success: true }
 					}),
 				)

@@ -12,7 +12,7 @@ import {
 	NotFound,
 } from '../../shared/errors.js'
 import { Organization } from '../../shared/schemas.js'
-import { catchSql, KyselyDB, mapDbErrors, sql } from '../db.js'
+import { fromSql, KyselyDB, mapDbErrors, sql } from '../db.js'
 
 type OrgRow = Selectable<AppPublicOrganizations>
 
@@ -47,7 +47,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 									}),
 							}),
 						),
-						catchSql,
+						fromSql,
 						Effect.mapError((error) =>
 							error._tag === 'NoSuchElementException'
 								? new InternalError({ message: 'Failed to create organization' })
@@ -62,7 +62,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 					.selectFrom('app_public.organizations')
 					.selectAll()
 					.orderBy('created_at', 'asc')
-					.pipe(catchSql)
+					.pipe(fromSql)
 			}),
 
 			byId: Effect.fnUntraced(function* (orgId: (typeof Organization.select.Type)['id']) {
@@ -74,7 +74,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 					.pipe(
 						Effect.head,
 						Effect.catchTag('NoSuchElementException', () => Effect.succeed(null)),
-						catchSql,
+						fromSql,
 					)
 			}),
 
@@ -97,7 +97,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 								}),
 							),
 						),
-						catchSql,
+						fromSql,
 					)
 			}),
 
@@ -113,7 +113,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 						Effect.head,
 						Effect.catchTag('NoSuchElementException', Effect.die),
 						Effect.asVoid,
-						catchSql,
+						fromSql,
 					)
 			}),
 
@@ -138,7 +138,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 					])
 					.where('m.organization_id', '=', orgId)
 					.orderBy('m.created_at', 'asc')
-					.pipe(catchSql)
+					.pipe(fromSql)
 			}),
 
 			// Never selectAll() — `code` is the invite secret and must not leak to members.
@@ -150,7 +150,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 					.selectFrom('app_public.organization_invitations')
 					.select(['id', 'organization_id', 'user_id', 'email'])
 					.where('organization_id', '=', orgId)
-					.pipe(catchSql)
+					.pipe(fromSql)
 			}),
 
 			removeMember: Effect.fnUntraced(function* (
@@ -171,7 +171,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 						Effect.head,
 						Effect.catchTag('NoSuchElementException', Effect.die),
 						Effect.asVoid,
-						catchSql,
+						fromSql,
 					)
 			}),
 
@@ -206,7 +206,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 							}),
 						),
 						Effect.asVoid,
-						catchSql,
+						fromSql,
 						Effect.mapError((error) =>
 							error._tag === 'NoSuchElementException'
 								? new InternalError({ message: 'Failed to invite user' })
@@ -243,7 +243,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 								DNIED: (msg) => new AccessDenied({ message: msg }),
 							}),
 						),
-						catchSql,
+						fromSql,
 						Effect.mapError((error) =>
 							error._tag === 'NoSuchElementException'
 								? new InternalError({
@@ -272,7 +272,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 						Effect.head,
 						Effect.catchTag('NoSuchElementException', Effect.die),
 						Effect.asVoid,
-						catchSql,
+						fromSql,
 					)
 			}),
 
@@ -297,7 +297,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 					.pipe(
 						Effect.head,
 						Effect.catchTag('NoSuchElementException', () => Effect.succeed(null)),
-						catchSql,
+						fromSql,
 					)
 			}),
 
@@ -322,7 +322,7 @@ export class Organizations extends Effect.Service<Organizations>()(
 					.pipe(
 						Effect.head,
 						Effect.catchTag('NoSuchElementException', () => Effect.succeed(null)),
-						catchSql,
+						fromSql,
 					)
 			}),
 		}),

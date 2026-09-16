@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 
 import { SessionNotFound, InternalError } from '../../shared/errors.js'
 import { PgRootDB, sql } from '../db.js'
-import { catchSql } from '../db.js'
+import { fromSql } from '../db.js'
 
 export class Sessions extends Effect.Service<Sessions>()('Auth/SessionService', {
 	accessors: true,
@@ -60,18 +60,18 @@ export class Sessions extends Effect.Service<Sessions>()('Auth/SessionService', 
 							})
 						: error,
 				),
-				catchSql,
+				fromSql,
 			),
 
 			getUserSessions: Effect.fn('db:session:getUserSessions')(
 				queries.getUserSessions,
-				catchSql,
+				fromSql,
 			),
 
 			createSession: Effect.fn('db:session:insert')(
 				queries.createSession,
 				Effect.head,
-				catchSql,
+				fromSql,
 				Effect.mapError((error) =>
 					error._tag === 'NoSuchElementException'
 						? new InternalError({ message: 'Failed to create session' })
@@ -83,7 +83,7 @@ export class Sessions extends Effect.Service<Sessions>()('Auth/SessionService', 
 				queries.deleteSession,
 				Effect.head,
 				Effect.map((first) => first.numDeletedRows > 0),
-				catchSql,
+				fromSql,
 				Effect.mapError((error) =>
 					error._tag === 'NoSuchElementException'
 						? new InternalError({ message: 'Failed to delete session' })
@@ -95,7 +95,7 @@ export class Sessions extends Effect.Service<Sessions>()('Auth/SessionService', 
 				queries.deleteAllUserSessions,
 				Effect.head,
 				Effect.map((first) => first.numDeletedRows),
-				catchSql,
+				fromSql,
 				Effect.mapError((error) =>
 					error._tag === 'NoSuchElementException'
 						? new InternalError({ message: 'Failed to delete sessions' })

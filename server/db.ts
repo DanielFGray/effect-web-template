@@ -112,7 +112,7 @@ export const withAuthContext = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 				return yield* effect.pipe(Effect.provide(Layer.succeed(KyselyDB, db)))
 			}),
 		)
-	}).pipe(catchSql)
+	}).pipe(fromSql)
 
 export { PostgresError } from 'pg-error-enum'
 
@@ -187,7 +187,33 @@ export const mapUniqueViolation =
 			),
 		)
 
-export const catchSql = <A, E, R>(
+/**
+ * SQL query boundary: map SqlError → InternalError, and materialize plain
+ * row values. @effect/sql-kysely's effectifyWith Proxy re-wraps success
+ * values on yield*; leaving them proxied makes seroval reject loader data
+ * when a caller later .map()s the array. Array.from copies into a real
+ * Array; nested plain objects are rebuilt so nested fields are not Proxies.
+ *
+ * Rebuilding drops prototypes, so only values that are plain data may pass
+ * through here. That holds today: every service returns query rows, and the
+ * schema has no binary columns. A class instance or a Buffer would arrive
+ * flattened, so unwrap closer to the query if one is ever returned.
+ */
+const plainSqlResult = <A>(value: A): A => {
+	const plain = (v: unknown): unknown => {
+		if (v === null || typeof v !== 'object') return v
+		if (v instanceof Date) return v
+		if (Array.isArray(v)) return Array.from(v, plain)
+		const out: Record<string, unknown> = {}
+		for (const key of Object.keys(v as object)) {
+			out[key] = plain((v as Record<string, unknown>)[key])
+		}
+		return out
+	}
+	return plain(value) as A
+}
+
+export const fromSql = <A, E, R>(
 	self: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, Exclude<E, SqlError.SqlError> | InternalError, R> =>
 	self.pipe(
@@ -199,4 +225,5 @@ export const catchSql = <A, E, R>(
 				? new InternalError({ message: 'An internal error occurred' })
 				: error,
 		),
+		Effect.map(plainSqlResult),
 	) as Effect.Effect<A, Exclude<E, SqlError.SqlError> | InternalError, R>

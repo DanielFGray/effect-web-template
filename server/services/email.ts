@@ -9,7 +9,7 @@ import {
 	EmailNotVerified,
 	InternalError,
 } from '../../shared/errors.js'
-import { sql, KyselyDB, catchSql, mapDbErrors } from '../db.js'
+import { sql, KyselyDB, fromSql, mapDbErrors } from '../db.js'
 
 export class Email extends Effect.Service<Email>()('User/Email', {
 	accessors: true,
@@ -20,7 +20,7 @@ export class Email extends Effect.Service<Email>()('User/Email', {
 				.selectFrom('app_public.user_emails')
 				.selectAll()
 				.orderBy('created_at', 'asc')
-				.pipe(catchSql)
+				.pipe(fromSql)
 		}),
 
 		addEmail: Effect.fnUntraced(function* ({ email }: { email: string }) {
@@ -41,7 +41,7 @@ export class Email extends Effect.Service<Email>()('User/Email', {
 							? new InternalError({ message: 'Failed to add email' })
 							: error,
 					),
-					catchSql,
+					fromSql,
 				)
 		}),
 
@@ -63,7 +63,7 @@ export class Email extends Effect.Service<Email>()('User/Email', {
 							? new InternalError({ message: 'Failed to remove email' })
 							: error,
 					),
-					catchSql,
+					fromSql,
 				)
 		}),
 
@@ -87,7 +87,7 @@ export class Email extends Effect.Service<Email>()('User/Email', {
 				.pipe(
 					Effect.head,
 					Effect.map((first) => Boolean(first.verify_email)),
-					catchSql,
+					fromSql,
 					Effect.mapError((error) =>
 						error._tag === 'NoSuchElementException'
 							? new InternalError({ message: 'Email verification failed' })
@@ -114,7 +114,7 @@ export class Email extends Effect.Service<Email>()('User/Email', {
 				.pipe(
 					Effect.head,
 					Effect.map((first) => first.resend_email_verification_code),
-					catchSql,
+					fromSql,
 					Effect.mapError((error) =>
 						error._tag === 'NoSuchElementException'
 							? new InternalError({ message: 'Failed to resend verification' })
@@ -147,7 +147,7 @@ export class Email extends Effect.Service<Email>()('User/Email', {
 							? new InternalError({ message: 'Failed to make email primary' })
 							: error,
 					),
-					catchSql,
+					fromSql,
 				)
 		}),
 	}),

@@ -15,7 +15,7 @@ import {
 } from '../../shared/errors.js'
 import { User } from '../../shared/schemas.js'
 import { PgRootDB, KyselyDB, sql } from '../db.js'
-import { catchSql, mapDbErrors, mapUniqueViolation } from '../db.js'
+import { fromSql, mapDbErrors, mapUniqueViolation } from '../db.js'
 
 type SelectableUser = typeof User.select.Type
 
@@ -147,7 +147,7 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 						Effect.head,
 						Effect.catchTag('NoSuchElementException', Effect.die),
 						Effect.map((x) => x.logout),
-						catchSql,
+						fromSql,
 					)
 			}),
 
@@ -166,7 +166,7 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 						LOCKD: (msg) => new AccountLocked({ message: msg }),
 					}),
 				),
-				catchSql,
+				fromSql,
 			),
 
 			register: Effect.fn('db:user:register')(
@@ -187,7 +187,7 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 				mapUniqueViolation(
 					() => new UsernameTaken({ message: 'username already exists' }),
 				),
-				catchSql,
+				fromSql,
 				Effect.mapError((error) =>
 					error._tag === 'NoSuchElementException'
 						? new InternalError({ message: 'Registration failed' })
@@ -209,7 +209,7 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 					.returningAll()
 					.pipe(
 						Effect.head,
-						catchSql,
+						fromSql,
 						Effect.mapError((error) =>
 							error._tag === 'NoSuchElementException'
 								? new InternalError({ message: 'Profile update failed' })
@@ -257,7 +257,7 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 								? new InternalError({ message: 'Password change failed' })
 								: error,
 						),
-						catchSql,
+						fromSql,
 					)
 			}),
 
@@ -265,7 +265,7 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 				queries.forgotPassword,
 				Effect.head,
 				Effect.as(void 0 as void),
-				catchSql,
+				fromSql,
 				Effect.mapError((error) =>
 					error._tag === 'NoSuchElementException'
 						? new InternalError({ message: 'Password reset request failed' })
@@ -276,7 +276,7 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 			resetPassword: Effect.fn('db:user:resetPassword')(
 				queries.resetPassword,
 				Effect.head,
-				catchSql,
+				fromSql,
 				Effect.mapError((error) =>
 					error._tag === 'NoSuchElementException'
 						? new InternalError({ message: 'Password reset failed' })
@@ -287,7 +287,7 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 			oauthLink: Effect.fn('db:user:oauthLink')(
 				queries.oauthLink,
 				Effect.head,
-				catchSql,
+				fromSql,
 				Effect.mapError((error) =>
 					error._tag === 'NoSuchElementException'
 						? new InternalError({ message: 'OAuth link failed' })
@@ -303,7 +303,7 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 					.pipe(
 						Effect.head,
 						Effect.map((res) => res.numDeletedRows > 0),
-						catchSql,
+						fromSql,
 						Effect.mapError((error) =>
 							error._tag === 'NoSuchElementException'
 								? new InternalError({ message: 'OAuth unlink failed' })
@@ -325,7 +325,7 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 					.selectAll()
 					.pipe(
 						Effect.head,
-						catchSql,
+						fromSql,
 						Effect.mapError((error) =>
 							error._tag === 'NoSuchElementException'
 								? new InternalError({ message: 'Account deletion request failed' })
@@ -352,7 +352,7 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 								OWNER: (msg) => new CannotDeleteWhileOwningOrganization({ message: msg }),
 							}),
 						),
-						catchSql,
+						fromSql,
 						Effect.mapError((error) =>
 							error._tag === 'NoSuchElementException'
 								? new InternalError({ message: 'Account deletion confirmation failed' })

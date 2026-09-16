@@ -3,7 +3,7 @@ import { jsonBuildObject } from 'kysely/helpers/postgres'
 
 import { InternalError } from '../../shared/errors.js'
 import { Post } from '../../shared/schemas.js'
-import { catchSql, KyselyDB, type EffectKysely } from '../db.js'
+import { fromSql, KyselyDB, type EffectKysely } from '../db.js'
 
 export { Post, PostWithDetails } from '../../shared/schemas.js'
 
@@ -42,7 +42,7 @@ export class Posts extends Effect.Service<Posts>()('Posts/PostRepo', {
 					.pipe(
 						Effect.head,
 						Effect.catchTag('NoSuchElementException', () => Effect.succeed(null)),
-						catchSql,
+						fromSql,
 					)
 			}),
 
@@ -57,7 +57,7 @@ export class Posts extends Effect.Service<Posts>()('Posts/PostRepo', {
 						Effect.catchTag('NoSuchElementException', () =>
 							Effect.fail(new InternalError({ message: 'Failed to create post' })),
 						),
-						catchSql,
+						fromSql,
 					)
 			}),
 
@@ -68,11 +68,12 @@ export class Posts extends Effect.Service<Posts>()('Posts/PostRepo', {
 				sort?: 'created_at' | 'updated_at' | 'stars'
 			}) {
 				const db = yield* KyselyDB
-				let query = makeBaseQuery(db).limit(opts.limit ?? 50)
+				let query = makeBaseQuery(db)
+					.orderBy(opts.sort ?? 'created_at', 'desc')
+					.limit(opts.limit ?? 50)
 				if (opts.username) query = query.where('u.username', '=', opts.username)
-				if (opts.sort) query = query.orderBy(opts.sort, 'desc')
 				if (opts.offset) query = query.offset(opts.offset)
-				return yield* query.pipe(catchSql)
+				return yield* query.pipe(fromSql)
 			}),
 		} as const
 	},

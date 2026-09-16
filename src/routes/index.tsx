@@ -10,6 +10,7 @@ import { useState } from 'react'
 
 import { withAuthContext } from '../../server/db.js'
 import { Posts } from '../../server/services/posts.js'
+import { type FeedPost } from '../../shared/schemas.js'
 import {
 	Form,
 	Spinner,
@@ -21,20 +22,18 @@ import { runServer } from '../lib/runtime.server.js'
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: FormResult }
 
-type FeedPost = {
-	id: string
-	body: string
-	privacy: 'public' | 'secret' | 'private'
-	user: { username: string | null; avatar_url: string | null }
-}
-
 const getPosts = createServerFn({ method: 'GET' }).handler(async () => {
-	const posts = await runServer(Posts.listBy({}).pipe(withAuthContext))
+	const posts = await runServer(
+		Posts.listBy({ sort: 'created_at' }).pipe(withAuthContext),
+	)
 	return posts.map((post): FeedPost => ({
 		id: String(post.id),
 		body: post.body,
 		privacy: post.privacy,
-		user: post.user,
+		user: {
+			username: post.user.username,
+			avatar_url: post.user.avatar_url,
+		},
 	}))
 })
 

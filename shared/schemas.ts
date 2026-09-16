@@ -48,6 +48,18 @@ export const PostWithDetails = S.Struct({
 	}),
 }).pipe(S.omit('user_id'))
 
+/** Plain feed row for the browser boundary (loader / server functions). Ids are strings on the wire. */
+export const FeedPost = S.Struct({
+	id: S.String,
+	body: S.NonEmptyTrimmedString,
+	privacy: S.Literal('public', 'secret', 'private'),
+	user: S.Struct({
+		username: S.NullOr(S.String),
+		avatar_url: S.NullOr(S.String),
+	}),
+})
+export type FeedPost = typeof FeedPost.Type
+
 export class UserEmail extends Model.Class<UserEmail>('UserEmail')({
 	id: Model.Generated(S.UUID),
 	user_id: S.UUID,
