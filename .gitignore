@@ -120,6 +120,10 @@ out
 .nuxt
 dist
 
+# Nitro / TanStack Start production output
+.output
+.nitro
+
 # Gatsby files
 
 # Comment in the public line in if your project uses Gatsby and not Next.js

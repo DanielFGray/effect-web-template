@@ -1,3 +1,4 @@
+import { nitroV2Plugin } from '@tanstack/nitro-v2-vite-plugin'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
@@ -26,15 +27,17 @@ export default mergeConfig(
 	defineConfig({
 		plugins: [
 			tsconfigPaths(),
-			// tanstack plugin must come before react plugin
+			// tanstackStart before viteReact (Start owns the React transform order).
+			// nitroV2 between them: Start registers the SSR env; nitro captures that
+			// SSR bundle and wraps it as the Nitro renderer before React's plugin runs.
 			tanstackStart(),
+			nitroV2Plugin(),
 			viteReact(),
 		],
 		build: {
 			target: 'esnext',
-			// Relative to this config's directory. Anything starting `../` lands
-			// outside the package, where the emitted server entry cannot resolve
-			// node_modules and nothing gitignores it.
+			// Client environment writes here; nitroV2Plugin copies that directory
+			// into .output/public. Keep it inside the package (never `../…`).
 			outDir: 'dist',
 		},
 		server: {

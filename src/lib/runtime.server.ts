@@ -107,7 +107,12 @@ type AppContext = ManagedRuntime.ManagedRuntime.Context<typeof serverRuntime>
 /**
  * Run a domain Effect against the process ManagedRuntime (shared memoMap / pools).
  * Provides SessionCookie from the current Start request/response.
+ *
+ * Layer.fresh: SessionCookieStartLive reads the incoming Cookie header when the
+ * layer is built. Without fresh, ManagedRuntime's shared memoMap would reuse the
+ * first request's read value for every later runServer call.
  */
 export const runServer = <A, E>(
 	effect: Effect.Effect<A, E, AppContext | SessionCookie>,
-): Promise<A> => serverRuntime.runPromise(Effect.provide(effect, SessionCookieStartLive))
+): Promise<A> =>
+	serverRuntime.runPromise(Effect.provide(effect, Layer.fresh(SessionCookieStartLive)))

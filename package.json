@@ -23,6 +23,8 @@
 		"typecheck": "tsc --noEmit",
 		"typecheck:watch": "tsc --watch --noEmit",
 		"client:watch": "node --env-file=.env ./node_modules/.bin/vite dev --clearScreen=false",
+		"build": "NODE_ENV=production node --env-file=.env ./node_modules/.bin/vite build",
+		"start": "NODE_ENV=production node --env-file=.env .output/server/index.mjs",
 		"vitest:run": "node --env-file=.env ./node_modules/.bin/vitest run",
 		"vitest:watch": "node --env-file=.env ./node_modules/.bin/vitest dev",
 		"test": "run-s vitest:run",
@@ -70,6 +72,7 @@
 	},
 	"devDependencies": {
 		"@effect/language-service": "^0.87.2",
+		"@tanstack/nitro-v2-vite-plugin": "^1.155.2",
 		"@testcontainers/postgresql": "^12.1.0",
 		"@types/bun": "^1.4.2",
 		"@types/react": "^19.3.0",
