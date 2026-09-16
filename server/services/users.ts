@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { PgRootDB, CurrentDb, sql } from "../db.js";
+import { PgRootDB, KyselyDB, sql } from "../db.js";
 import { catchSql, mapDbErrors, mapUniqueViolation } from "../db.js";
 import {
   AccountLocked,
@@ -13,7 +13,7 @@ import {
 } from "../../shared/errors.js";
 import { User } from "../../shared/schemas.js";
 import type { AppPublicUsers } from "../../generated/db.js";
-import type { Selectable, Updateable } from "kysely";
+import type { Updateable } from "kysely";
 
 type SelectableUser = typeof User.select.Type;
 
@@ -35,7 +35,8 @@ export class Users extends Effect.Service<Users>()("User/Accounts", {
           // @ts-expect-error: Kysely doesn't seem to allow referencing tables directly
           .where((eb) => eb.not(eb(eb.ref("u"), "is", null))),
 
-      logout: () => rootDb.selectNoFrom((eb) => [eb.fn<void>("app_public.logout", []).as("logout")]),
+      logout: () =>
+        rootDb.selectNoFrom((eb) => [eb.fn<void>("app_public.logout", []).as("logout")]),
 
       reallyCreateUser: (payload: {
         username: string;
@@ -164,17 +165,14 @@ export class Users extends Effect.Service<Users>()("User/Accounts", {
         Effect.head,
         Effect.mapError(
           mapDbErrors({
-            MDEML: (msg) =>
-              new MissingData({ message: msg, field: "email" }),
-            MDPWD: (msg) =>
-              new MissingData({ message: msg, field: "password" }),
+            MDEML: (msg) => new MissingData({ message: msg, field: "email" }),
+            MDPWD: (msg) => new MissingData({ message: msg, field: "password" }),
             WEAKP: (msg) =>
               new WeakPassword({
                 message: msg,
                 requirements: ["At least 8 characters"],
               }),
-            TAKEN: (msg) =>
-              new AccountAlreadyLinked({ message: msg, service: "oauth" }),
+            TAKEN: (msg) => new AccountAlreadyLinked({ message: msg, service: "oauth" }),
           }),
         ),
         mapUniqueViolation(() => new UsernameTaken({ message: "username already exists" })),
@@ -186,70 +184,65 @@ export class Users extends Effect.Service<Users>()("User/Accounts", {
         ),
       ),
 
-      updateProfile: (
+      updateProfile: Effect.fnUntraced(function* (
         patch: Pick<Updateable<AppPublicUsers>, "name" | "avatar_url" | "bio" | "username">,
-      ) =>
-        Effect.gen(function* () {
-          const db = yield* CurrentDb;
-          return yield* db
-            .updateTable("app_public.users")
-            .set(patch)
-            .where("id", "=", (eb) => eb.fn("app_public.current_user_id", []))
-            .returningAll()
-            .pipe(
-              Effect.head,
-              catchSql,
-              Effect.mapError((error) =>
-                error._tag === "NoSuchElementException"
-                  ? new InternalError({ message: "Profile update failed" })
-                  : error,
-              ),
-            );
-        }),
+      ) {
+        const db = yield* KyselyDB;
+        return yield* db
+          .updateTable("app_public.users")
+          .set(patch)
+          .where("id", "=", (eb) => eb.fn("app_public.current_user_id", []))
+          .returningAll()
+          .pipe(
+            Effect.head,
+            catchSql,
+            Effect.mapError((error) =>
+              error._tag === "NoSuchElementException"
+                ? new InternalError({ message: "Profile update failed" })
+                : error,
+            ),
+          );
+      }),
 
-      changePassword: ({
+      changePassword: Effect.fnUntraced(function* ({
         oldPassword,
         newPassword,
       }: {
         oldPassword: string;
         newPassword: string;
-      }) =>
-        Effect.gen(function* () {
-          const db = yield* CurrentDb;
-          return yield* db
-            .selectNoFrom((eb) => [
-              eb
-                .fn<boolean>("app_public.change_password", [
-                  eb.val(oldPassword),
-                  eb.val(newPassword),
-                ])
-                .as("change_password"),
-            ])
-            .pipe(
-              Effect.head,
-              Effect.mapError(
-                mapDbErrors({
-                  LOGIN: (msg) =>
-                    new AuthenticationRequired({
-                      message: msg,
-                      action: "change_password",
-                    }),
-                  CREDS: (msg) => new InvalidCredentials({ message: msg }),
-                  WEAKP: (msg) =>
-                    new WeakPassword({
-                      message: msg,
-                      requirements: ["At least 8 characters"],
-                    }),
-                }),
-              ),
-              Effect.mapError((error) =>
-                error._tag === "NoSuchElementException"
-                  ? new InternalError({ message: "Password change failed" })
-                  : error,
-              ),
-              catchSql,
-            );
-        }),
+      }) {
+        const db = yield* KyselyDB;
+        return yield* db
+          .selectNoFrom((eb) => [
+            eb
+              .fn<boolean>("app_public.change_password", [eb.val(oldPassword), eb.val(newPassword)])
+              .as("change_password"),
+          ])
+          .pipe(
+            Effect.head,
+            Effect.mapError(
+              mapDbErrors({
+                LOGIN: (msg) =>
+                  new AuthenticationRequired({
+                    message: msg,
+                    action: "change_password",
+                  }),
+                CREDS: (msg) => new InvalidCredentials({ message: msg }),
+                WEAKP: (msg) =>
+                  new WeakPassword({
+                    message: msg,
+                    requirements: ["At least 8 characters"],
+                  }),
+              }),
+            ),
+            Effect.mapError((error) =>
+              error._tag === "NoSuchElementException"
+                ? new InternalError({ message: "Password change failed" })
+                : error,
+            ),
+            catchSql,
+          );
+      }),
 
       forgotPassword: Effect.fn("db:user:forgotPassword")(
         queries.forgotPassword,
@@ -285,69 +278,66 @@ export class Users extends Effect.Service<Users>()("User/Accounts", {
         ),
       ),
 
-      oauthUnlink: ({ id }: { id: string }) =>
-        Effect.gen(function* () {
-          const db = yield* CurrentDb;
-          return yield* db
-            .deleteFrom("app_public.user_authentications")
-            .where("id", "=", id)
-            .pipe(
-              Effect.head,
-              Effect.map((res) => res.numDeletedRows > 0),
-              catchSql,
-              Effect.mapError((error) =>
-                error._tag === "NoSuchElementException"
-                  ? new InternalError({ message: "OAuth unlink failed" })
-                  : error,
-              ),
-            );
-        }),
+      oauthUnlink: Effect.fnUntraced(function* ({ id }: { id: string }) {
+        const db = yield* KyselyDB;
+        return yield* db
+          .deleteFrom("app_public.user_authentications")
+          .where("id", "=", id)
+          .pipe(
+            Effect.head,
+            Effect.map((res) => res.numDeletedRows > 0),
+            catchSql,
+            Effect.mapError((error) =>
+              error._tag === "NoSuchElementException"
+                ? new InternalError({ message: "OAuth unlink failed" })
+                : error,
+            ),
+          );
+      }),
 
-      requestAccountDeletion: () =>
-        Effect.gen(function* () {
-          const db = yield* CurrentDb;
-          return yield* db
-            .selectFrom((eb) =>
-              eb
-                .fn<{
-                  request_account_deletion: boolean;
-                }>("app_public.request_account_deletion", [])
-                .as("request_account_deletion"),
-            )
-            .selectAll()
-            .pipe(
-              Effect.head,
-              catchSql,
-              Effect.mapError((error) =>
-                error._tag === "NoSuchElementException"
-                  ? new InternalError({ message: "Account deletion request failed" })
-                  : error,
-              ),
-            );
-        }),
+      requestAccountDeletion: Effect.fnUntraced(function* () {
+        const db = yield* KyselyDB;
+        return yield* db
+          .selectFrom((eb) =>
+            eb
+              .fn<{
+                request_account_deletion: boolean;
+              }>("app_public.request_account_deletion", [])
+              .as("request_account_deletion"),
+          )
+          .selectAll()
+          .pipe(
+            Effect.head,
+            catchSql,
+            Effect.mapError((error) =>
+              error._tag === "NoSuchElementException"
+                ? new InternalError({ message: "Account deletion request failed" })
+                : error,
+            ),
+          );
+      }),
 
-      confirmAccountDeletion: ({ token }: { token: string }) =>
-        Effect.gen(function* () {
-          const db = yield* CurrentDb;
-          return yield* db
-            .selectFrom((eb) =>
-              eb
-                .fn<{
-                  confirm_account_deletion: boolean;
-                }>("app_public.confirm_account_deletion", [eb.val(token)])
-                .as("confirm_account_deletion"),
-            )
-            .selectAll()
-            .pipe(
-              Effect.head,
-              catchSql,
-              Effect.mapError((error) =>
-                error._tag === "NoSuchElementException"
-                  ? new InternalError({ message: "Account deletion confirmation failed" })
-                  : error,
-              ),
-            );
-        }),
+      confirmAccountDeletion: Effect.fnUntraced(function* ({ token }: { token: string }) {
+        const db = yield* KyselyDB;
+        return yield* db
+          .selectFrom((eb) =>
+            eb
+              .fn<{
+                confirm_account_deletion: boolean;
+              }>("app_public.confirm_account_deletion", [eb.val(token)])
+              .as("confirm_account_deletion"),
+          )
+          .selectAll()
+          .pipe(
+            Effect.head,
+            catchSql,
+            Effect.mapError((error) =>
+              error._tag === "NoSuchElementException"
+                ? new InternalError({ message: "Account deletion confirmation failed" })
+                : error,
+            ),
+          );
+      }),
     } as const;
   }),
 }) {

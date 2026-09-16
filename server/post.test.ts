@@ -11,7 +11,7 @@ import { Post, PostWithDetails } from "./services/posts.js";
 
 const TestHttpClientLive = FetchHttpClient.layer;
 
-const baseUrl = Config.string("VITE_ROOT_URL");
+const baseUrl = Config.string("PORT").pipe(Effect.map((port) => `http://localhost:${port}`));
 
 const CreatePostResponse = Post.select.pick("id");
 

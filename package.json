@@ -20,7 +20,8 @@
     "db:init": "run-s db:up db:setup db:reset db:latest worker:schema",
     "env:init": "bun ./scripts/generateEnvFile.mjs",
     "init": "NOCONFIRM=1 run-s env:init db:init",
-    "tsc:watch": "tsc --watch --noEmit",
+    "typecheck": "tsc --noEmit",
+    "typecheck:watch": "tsc --watch --noEmit",
     "server:watch_": "run-p 'server:build --watch' server:exec:watch",
     "server:watch": "bun -b --watch --watch-preserve-output server/index.ts",
     "server:exec": "bun dist/server.js",
@@ -30,7 +31,7 @@
     "vitest:run": "node --env-file=.env ./node_modules/.bin/vitest run",
     "vitest:watch": "node --env-file=.env ./node_modules/.bin/vitest dev",
     "test": "run-s vitest:run",
-    "dev": "mprocs 'bun server:watch' 'bun client:watch' 'bun db:watch' 'bun worker' 'bun tsc:watch' 'bun vitest:watch'"
+    "dev": "mprocs 'bun server:watch' 'bun client:watch' 'bun db:watch' 'bun worker' 'bun typecheck:watch' 'bun vitest:watch'"
   },
   "dependencies": {
     "@effect-atom/atom-react": "^0.5.0",

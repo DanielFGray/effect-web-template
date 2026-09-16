@@ -5,7 +5,7 @@ import { PgClient } from "@effect/sql-pg";
 import { SqlError } from "@effect/sql";
 import type { DB } from "../generated/db.js";
 import { sql } from "kysely";
-import { camelToSnake, snakeToCamel } from "effect/String";
+// import { camelToSnake, snakeToCamel } from "effect/String";
 import { HttpServerRequest } from "@effect/platform/HttpServerRequest";
 import { PostgresError } from "pg-error-enum";
 import { CookieSigner } from "./services/cookie-signer.js";
@@ -13,7 +13,7 @@ import { InternalError } from "../shared/errors.js";
 
 export { sql } from "kysely";
 
-export type KyselyDB = PgKysely.EffectKysely<DB>;
+export type EffectKysely = PgKysely.EffectKysely<DB>;
 
 const types: pg.CustomTypesConfig = {
   getTypeParser: (oid, format) =>
@@ -47,7 +47,7 @@ const withDatabaseRetry = <E, A, R>(layer: Layer.Layer<E, A, R>) =>
     ),
   );
 
-export class PgAuthDB extends Context.Tag("PgAuthDB")<PgAuthDB, KyselyDB>() {
+export class PgAuthDB extends Context.Tag("PgAuthDB")<PgAuthDB, EffectKysely>() {
   static Conn = Layer.unwrapEffect(
     Config.redacted("AUTH_DATABASE_URL").pipe(
       Effect.andThen((url) => PgClient.layer({ url, ...pgConfig })),
@@ -57,7 +57,7 @@ export class PgAuthDB extends Context.Tag("PgAuthDB")<PgAuthDB, KyselyDB>() {
   static Live = this.Kysely.pipe(Layer.provide(this.Conn));
 }
 
-export class PgRootDB extends Context.Tag("PgRootDB")<PgRootDB, KyselyDB>() {
+export class PgRootDB extends Context.Tag("PgRootDB")<PgRootDB, EffectKysely>() {
   static Conn = Layer.unwrapEffect(
     Config.redacted("DATABASE_URL").pipe(
       Effect.andThen((url) => PgClient.layer({ url, ...pgConfig })),
@@ -67,7 +67,9 @@ export class PgRootDB extends Context.Tag("PgRootDB")<PgRootDB, KyselyDB>() {
   static Live = this.Kysely.pipe(Layer.provide(this.Conn));
 }
 
-export class CurrentDb extends Context.Tag("CurrentDb")<CurrentDb, KyselyDB>() {}
+export class KyselyDB extends Context.Tag("CurrentDb")<KyselyDB, EffectKysely>() {
+  static Live = Layer.effect(this, PgKysely.make<DB>());
+}
 
 export const withAuthContext = <A, E>(effect: Effect.Effect<A, E, any>) =>
   Effect.gen(function* () {
@@ -95,7 +97,7 @@ export const withAuthContext = <A, E>(effect: Effect.Effect<A, E, any>) =>
             .fn<void>("set_config", [sql.lit("my.session_id"), eb.val(sessionId), eb.lit(true)])
             .as("_2"),
         ]);
-        return yield* effect.pipe(Effect.provide(Layer.succeed(CurrentDb, db)));
+        return yield* effect.pipe(Effect.provide(Layer.succeed(KyselyDB, db)));
       }),
     );
   }).pipe(catchSql);

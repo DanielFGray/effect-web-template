@@ -22,8 +22,9 @@ const withSessionCookie = Effect.fnUntraced(function* (
 
 export const UsersApiGroupLive = HttpApiBuilder.group(Contract, "users", (handlers) =>
   handlers
-    .handle("register", ({ payload }) =>
-      Effect.gen(function* () {
+    .handle(
+      "register",
+      Effect.fnUntraced(function* ({ payload }) {
         const user = yield* Users.register(payload);
         const session = yield* Sessions.createSession(user.id);
         return yield* withSessionCookie(
@@ -32,8 +33,9 @@ export const UsersApiGroupLive = HttpApiBuilder.group(Contract, "users", (handle
         );
       }),
     )
-    .handle("login", ({ payload }) =>
-      Effect.gen(function* () {
+    .handle(
+      "login",
+      Effect.fnUntraced(function* ({ payload }) {
         const user = yield* Users.login(payload);
         const session = yield* Sessions.createSession(user.id);
         return yield* withSessionCookie(
@@ -44,36 +46,13 @@ export const UsersApiGroupLive = HttpApiBuilder.group(Contract, "users", (handle
     )
     .handle("resetPassword", ({ payload }) => Users.resetPassword(payload))
     .handle("logout", () => Users.logout())
-    .handle("requestDeletion", () =>
-      Effect.gen(function* () {
-        const users = yield* Users;
-        return yield* users.requestAccountDeletion();
-      }).pipe(withAuthContext),
-    )
+    .handle("requestDeletion", () => Users.requestAccountDeletion().pipe(withAuthContext))
     .handle("confirmDeletion", ({ payload }) =>
-      Effect.gen(function* () {
-        const users = yield* Users;
-        return yield* users.confirmAccountDeletion(payload);
-      }).pipe(withAuthContext),
+      Users.confirmAccountDeletion(payload).pipe(withAuthContext),
     )
     .handle("forgotPassword", ({ payload }) => Users.forgotPassword(payload))
-    .handle("changePassword", ({ payload }) =>
-      Effect.gen(function* () {
-        const users = yield* Users;
-        return yield* users.changePassword(payload);
-      }).pipe(withAuthContext),
-    )
-    .handle("updateProfile", ({ payload }) =>
-      Effect.gen(function* () {
-        const users = yield* Users;
-        return yield* users.updateProfile(payload);
-      }).pipe(withAuthContext),
-    )
+    .handle("changePassword", ({ payload }) => Users.changePassword(payload).pipe(withAuthContext))
+    .handle("updateProfile", ({ payload }) => Users.updateProfile(payload).pipe(withAuthContext))
     .handle("oauthLink", ({ payload }) => Users.oauthLink(payload))
-    .handle("oauthUnlink", ({ path: { id } }) =>
-      Effect.gen(function* () {
-        const users = yield* Users;
-        return yield* users.oauthUnlink({ id });
-      }).pipe(withAuthContext),
-    ),
+    .handle("oauthUnlink", ({ path: { id } }) => Users.oauthUnlink({ id }).pipe(withAuthContext)),
 );
