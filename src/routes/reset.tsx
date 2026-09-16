@@ -1,19 +1,16 @@
-import { useState } from 'react'
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
-import { callApi } from '../lib/api.server.js'
-import { Form, formResultFromError, type FormResult } from '../components.js'
-import { isValidPassword } from '../../shared/validation.js'
+import { useState } from 'react'
 
-type ActionResult =
-	| { ok: true; data: null }
-	| { ok: false; error: FormResult }
+import { isValidPassword } from '../../shared/validation.js'
+import { Form, formResultFromError, type FormResult } from '../components.js'
+import { callApi } from '../lib/api.server.js'
+
+type ActionResult = { ok: true; data: null } | { ok: false; error: FormResult }
 
 const resetFn = createServerFn({ method: 'POST' })
-	.validator(
-		(data: { userId: string; token: string; password: string }) => data,
-	)
+	.validator((data: { userId: string; token: string; password: string }) => data)
 	.handler(({ data }): Promise<ActionResult> =>
 		callApi((api) =>
 			api.users.resetPassword({ payload: data }).pipe(

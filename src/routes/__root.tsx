@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import {
 	Outlet,
 	createRootRoute,
@@ -7,7 +6,10 @@ import {
 	Link,
 } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import type { ReactNode } from 'react'
+
 import { callApi } from '../lib/api.server.js'
+
 import '../styles.css'
 
 const getCurrentUser = createServerFn({ method: 'GET' }).handler(() =>

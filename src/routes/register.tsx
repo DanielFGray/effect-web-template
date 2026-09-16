@@ -1,28 +1,16 @@
-import { useState } from 'react'
-import {
-	createFileRoute,
-	Link,
-	useNavigate,
-	useRouter,
-} from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
-import { callApi } from '../lib/api.server.js'
-import { Form, formResultFromError, type FormResult } from '../components.js'
-import { isValidEmail, isValidPassword } from '../../shared/validation.js'
+import { useState } from 'react'
 
-type ActionResult =
-	| { ok: true; data: null }
-	| { ok: false; error: FormResult }
+import { isValidEmail, isValidPassword } from '../../shared/validation.js'
+import { Form, formResultFromError, type FormResult } from '../components.js'
+import { callApi } from '../lib/api.server.js'
+
+type ActionResult = { ok: true; data: null } | { ok: false; error: FormResult }
 
 const registerFn = createServerFn({ method: 'POST' })
-	.validator(
-		(data: {
-			username: string
-			password: string
-			email: string | null
-		}) => data,
-	)
+	.validator((data: { username: string; password: string; email: string | null }) => data)
 	.handler(({ data }): Promise<ActionResult> =>
 		callApi((api) =>
 			api.users.register({ payload: data }).pipe(

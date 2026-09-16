@@ -8,23 +8,23 @@
 
 /** @type {Task} */
 export default async (inPayload, { addJob }) => {
-  /** @type {UserSendAccountDeletionEmailPayload} */
-  const payload = inPayload
-  const { email, token } = payload
+	/** @type {UserSendAccountDeletionEmailPayload} */
+	const payload = inPayload
+	const { email, token } = payload
 
-  /** @type {SendEmailPayload} */
-  const sendEmailPayload = {
-    options: {
-      to: email,
-      subject: 'Confirmation required: really delete account?',
-    },
-    template: 'delete_account.mjml',
-    variables: {
-      token,
-      deleteAccountLink: `${process.env.VITE_ROOT_URL}/settings?delete_token=${encodeURIComponent(
-        token,
-      )}`,
-    },
-  }
-  await addJob('send_email', sendEmailPayload)
+	/** @type {SendEmailPayload} */
+	const sendEmailPayload = {
+		options: {
+			to: email,
+			subject: 'Confirmation required: really delete account?',
+		},
+		template: 'delete_account.mjml',
+		variables: {
+			token,
+			deleteAccountLink: `${process.env.VITE_ROOT_URL}/settings?delete_token=${encodeURIComponent(
+				token,
+			)}`,
+		},
+	}
+	await addJob('send_email', sendEmailPayload)
 }

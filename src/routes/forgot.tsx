@@ -1,14 +1,13 @@
-import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
-import { callApi } from '../lib/api.server.js'
-import { Form, formResultFromError, type FormResult } from '../components.js'
-import { isValidEmail } from '../../shared/validation.js'
+import { useState } from 'react'
 
-type ActionResult =
-	| { ok: true; data: null }
-	| { ok: false; error: FormResult }
+import { isValidEmail } from '../../shared/validation.js'
+import { Form, formResultFromError, type FormResult } from '../components.js'
+import { callApi } from '../lib/api.server.js'
+
+type ActionResult = { ok: true; data: null } | { ok: false; error: FormResult }
 
 const forgotFn = createServerFn({ method: 'POST' })
 	.validator((data: { email: string }) => data)
@@ -39,10 +38,9 @@ function ForgotPassword() {
 	if (done) {
 		return (
 			<div>
-				We&apos;ve sent a link to your email. Please check your email and click the
-				link and follow the instructions. If you don&apos;t receive the link, please
-				ensure you entered the email address correctly, and check in your spam folder
-				just in case.
+				We&apos;ve sent a link to your email. Please check your email and click the link
+				and follow the instructions. If you don&apos;t receive the link, please ensure you
+				entered the email address correctly, and check in your spam folder just in case.
 			</div>
 		)
 	}

@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import {
 	createFileRoute,
 	Link,
@@ -7,7 +6,8 @@ import {
 } from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
-import { callApi } from '../lib/api.server.js'
+import { useState } from 'react'
+
 import {
 	Form,
 	Spinner,
@@ -15,10 +15,9 @@ import {
 	formResultFromError,
 	type FormResult,
 } from '../components.js'
+import { callApi } from '../lib/api.server.js'
 
-type ActionResult<T = null> =
-	| { ok: true; data: T }
-	| { ok: false; error: FormResult }
+type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: FormResult }
 
 type FeedPost = {
 	id: string
@@ -29,14 +28,12 @@ type FeedPost = {
 
 const getPosts = createServerFn({ method: 'GET' }).handler(async () => {
 	const posts = await callApi((api) => api.posts.list({ urlParams: {} }))
-	return posts.map(
-		(post): FeedPost => ({
-			id: String(post.id),
-			body: post.body,
-			privacy: post.privacy,
-			user: post.user,
-		}),
-	)
+	return posts.map((post): FeedPost => ({
+		id: String(post.id),
+		body: post.body,
+		privacy: post.privacy,
+		user: post.user,
+	}))
 })
 
 const createPostFn = createServerFn({ method: 'POST' })
@@ -44,12 +41,10 @@ const createPostFn = createServerFn({ method: 'POST' })
 	.handler(({ data }): Promise<ActionResult<{ id: string }>> =>
 		callApi((api) =>
 			api.posts.create({ payload: data }).pipe(
-				Effect.map(
-					(created): ActionResult<{ id: string }> => ({
-						ok: true,
-						data: { id: String(created.id) },
-					}),
-				),
+				Effect.map((created): ActionResult<{ id: string }> => ({
+					ok: true,
+					data: { id: String(created.id) },
+				})),
 				Effect.catchAll((err) =>
 					Effect.succeed({
 						ok: false as const,

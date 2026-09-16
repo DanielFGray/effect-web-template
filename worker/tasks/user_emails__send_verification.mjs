@@ -10,14 +10,14 @@ const MIN_INTERVAL = 1000 * 60 * 3
 
 /** @type {Task} */
 export default async (inPayload, { addJob, withPgClient }) => {
-  /** @type {UserEmailsSendVerificationPayload} */
-  const payload = inPayload
-  const { id: userEmailId } = payload
-  const {
-    rows: [userEmail],
-  } = await withPgClient(pgClient =>
-    pgClient.query(
-      `
+	/** @type {UserEmailsSendVerificationPayload} */
+	const payload = inPayload
+	const { id: userEmailId } = payload
+	const {
+		rows: [userEmail],
+	} = await withPgClient((pgClient) =>
+		pgClient.query(
+			`
         select
           user_emails.id,
           email,
@@ -33,46 +33,47 @@ export default async (inPayload, { addJob, withPgClient }) => {
         where user_emails.id = $1
           and user_emails.is_verified is false
       `,
-      [userEmailId],
-    ),
-  )
-  if (!userEmail) {
-    console.warn(
-      `user_emails__send_verification task for non-existent userEmail ignored (userEmailId = ${userEmailId})`,
-    )
-    // No longer relevant
-    return
-  }
-  const { email, verification_token, username, name, seconds_since_verification_sent } = userEmail
-  if (
-    seconds_since_verification_sent != null &&
-    seconds_since_verification_sent < MIN_INTERVAL / 1000
-  ) {
-    console.log('Email sent too recently')
-    return
-  }
+			[userEmailId],
+		),
+	)
+	if (!userEmail) {
+		console.warn(
+			`user_emails__send_verification task for non-existent userEmail ignored (userEmailId = ${userEmailId})`,
+		)
+		// No longer relevant
+		return
+	}
+	const { email, verification_token, username, name, seconds_since_verification_sent } =
+		userEmail
+	if (
+		seconds_since_verification_sent != null &&
+		seconds_since_verification_sent < MIN_INTERVAL / 1000
+	) {
+		console.log('Email sent too recently')
+		return
+	}
 
-  /** @type {SendEmailPayload} */
-  const sendEmailPayload = {
-    options: {
-      to: email,
-      subject: 'Please verify your email address',
-    },
-    template: 'verify_email.mjml',
-    variables: {
-      token: verification_token,
-      verifyLink: `${process.env.VITE_ROOT_URL}/verify?id=${encodeURIComponent(
-        String(userEmailId),
-      )}&token=${encodeURIComponent(verification_token)}`,
-      username,
-      name,
-    },
-  }
-  await addJob('send_email', sendEmailPayload)
-  await withPgClient(pgClient =>
-    pgClient.query(
-      'update app_private.user_email_secrets set verification_email_sent_at = now() where user_email_id = $1',
-      [userEmailId],
-    ),
-  )
+	/** @type {SendEmailPayload} */
+	const sendEmailPayload = {
+		options: {
+			to: email,
+			subject: 'Please verify your email address',
+		},
+		template: 'verify_email.mjml',
+		variables: {
+			token: verification_token,
+			verifyLink: `${process.env.VITE_ROOT_URL}/verify?id=${encodeURIComponent(
+				String(userEmailId),
+			)}&token=${encodeURIComponent(verification_token)}`,
+			username,
+			name,
+		},
+	}
+	await addJob('send_email', sendEmailPayload)
+	await withPgClient((pgClient) =>
+		pgClient.query(
+			'update app_private.user_email_secrets set verification_email_sent_at = now() where user_email_id = $1',
+			[userEmailId],
+		),
+	)
 }

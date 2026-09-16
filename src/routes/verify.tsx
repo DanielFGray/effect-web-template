@@ -1,13 +1,12 @@
-import { useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
-import { callApi } from '../lib/api.server.js'
-import { Form, formResultFromError, type FormResult } from '../components.js'
+import { useEffect, useState } from 'react'
 
-type ActionResult =
-	| { ok: true; data: null }
-	| { ok: false; error: FormResult }
+import { Form, formResultFromError, type FormResult } from '../components.js'
+import { callApi } from '../lib/api.server.js'
+
+type ActionResult = { ok: true; data: null } | { ok: false; error: FormResult }
 
 const verifyFn = createServerFn({ method: 'POST' })
 	.validator((data: { id: string; token: string }) => data)

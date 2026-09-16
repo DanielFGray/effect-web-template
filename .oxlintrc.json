@@ -1,0 +1,28 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": ["typescript", "unicorn", "oxc", "react", "import", "vitest"],
+	"categories": {
+		"correctness": "error",
+		"suspicious": "warn",
+		"perf": "warn"
+	},
+	"rules": {
+		// Tests build their assertions inside Effect.gen generators passed to
+		// it.effect, so every expect() sits in a callback the rule cannot see
+		// into. It fires on all 74 of them and finds no real defects.
+		"vitest/no-standalone-expect": "off",
+		// tsconfig sets "jsx": "react-jsx", so the automatic runtime injects the
+		// factory and React never needs to be in scope.
+		"react/react-in-jsx-scope": "off",
+		// Effect's public API is built on _tag, _op and friends.
+		"eslint/no-underscore-dangle": "off",
+		// Importing a stylesheet for its side effect is how Vite loads CSS.
+		"import/no-unassigned-import": "off"
+	},
+	"env": {
+		"builtin": true,
+		"browser": true,
+		"node": true
+	},
+	"ignorePatterns": ["src/routeTree.gen.ts", "generated/"]
+}

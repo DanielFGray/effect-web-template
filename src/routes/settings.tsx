@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import {
 	createFileRoute,
 	redirect,
@@ -8,7 +7,9 @@ import {
 } from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
-import { callApi } from '../lib/api.server.js'
+import { useState } from 'react'
+
+import { isValidEmail, isValidPassword } from '../../shared/validation.js'
 import {
 	Form,
 	Spinner,
@@ -16,11 +17,9 @@ import {
 	formResultFromError,
 	type FormResult,
 } from '../components.js'
-import { isValidEmail, isValidPassword } from '../../shared/validation.js'
+import { callApi } from '../lib/api.server.js'
 
-type ActionResult<T = null> =
-	| { ok: true; data: T }
-	| { ok: false; error: FormResult }
+type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: FormResult }
 
 type EmailRowData = {
 	id: string
@@ -32,18 +31,16 @@ type EmailRowData = {
 
 const getEmails = createServerFn({ method: 'GET' }).handler(async () => {
 	const emails = await callApi((api) => api.email.list())
-	return emails.map(
-		(email): EmailRowData => ({
-			id: email.id,
-			email: email.email,
-			is_verified: email.is_verified,
-			is_primary: email.is_primary,
-			created_at:
-				email.created_at instanceof Date
-					? email.created_at.toISOString()
-					: String(email.created_at),
-		}),
-	)
+	return emails.map((email): EmailRowData => ({
+		id: email.id,
+		email: email.email,
+		is_verified: email.is_verified,
+		is_primary: email.is_primary,
+		created_at:
+			email.created_at instanceof Date
+				? email.created_at.toISOString()
+				: String(email.created_at),
+	}))
 })
 
 const updateProfileFn = createServerFn({ method: 'POST' })
@@ -166,29 +163,27 @@ const requestDeletionFn = createServerFn({ method: 'POST' }).handler(
 
 const confirmDeletionFn = createServerFn({ method: 'POST' })
 	.validator((data: { token: string }) => data)
-	.handler(
-		({ data }): Promise<ActionResult<{ confirm_account_deletion: boolean }>> =>
-			callApi((api) =>
-				api.users.confirmDeletion({ payload: data }).pipe(
-					Effect.map(
-						(result): ActionResult<{ confirm_account_deletion: boolean }> => ({
-							ok: true,
-							data: result,
-						}),
-					),
-					Effect.catchAll((err) =>
-						Effect.succeed({
-							ok: false as const,
-							error: formResultFromError(err),
-						}),
-					),
+	.handler(({ data }): Promise<ActionResult<{ confirm_account_deletion: boolean }>> =>
+		callApi((api) =>
+			api.users.confirmDeletion({ payload: data }).pipe(
+				Effect.map((result): ActionResult<{ confirm_account_deletion: boolean }> => ({
+					ok: true,
+					data: result,
+				})),
+				Effect.catchAll((err) =>
+					Effect.succeed({
+						ok: false as const,
+						error: formResultFromError(err),
+					}),
 				),
 			),
+		),
 	)
 
 export const Route = createFileRoute('/settings')({
 	validateSearch: (search: Record<string, unknown>) => ({
-		delete_token: typeof search.delete_token === 'string' ? search.delete_token : undefined,
+		delete_token:
+			typeof search.delete_token === 'string' ? search.delete_token : undefined,
 		showAddEmail: search.showAddEmail != null ? String(search.showAddEmail) : undefined,
 	}),
 	beforeLoad: ({ context }) => {
@@ -269,7 +264,12 @@ function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
 					value={username}
 					onChange={(e) => setUsername(e.target.value)}
 				/>
-				<Form.Row name="name" type="text" value={name} onChange={(e) => setName(e.target.value)} />
+				<Form.Row
+					name="name"
+					type="text"
+					value={name}
+					onChange={(e) => setName(e.target.value)}
+				/>
 				<Form.Row
 					label="avatar"
 					name="avatar_url"
@@ -277,7 +277,12 @@ function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
 					value={avatarUrl}
 					onChange={(e) => setAvatarUrl(e.target.value)}
 				/>
-				<Form.Row name="bio" type="textarea" value={bio} onChange={(e) => setBio(e.target.value)} />
+				<Form.Row
+					name="bio"
+					type="textarea"
+					value={bio}
+					onChange={(e) => setBio(e.target.value)}
+				/>
 				<div>
 					<Form.Errors />
 					<button type="submit">update</button>
@@ -396,7 +401,13 @@ function EmailSettings({
 	)
 }
 
-function EmailRow({ email, hasOtherEmails }: { email: EmailRowData; hasOtherEmails: boolean }) {
+function EmailRow({
+	email,
+	hasOtherEmails,
+}: {
+	email: EmailRowData
+	hasOtherEmails: boolean
+}) {
 	const [response, setResponse] = useState<FormResult>()
 	const canDelete = !email.is_primary && hasOtherEmails
 	const resend = useServerFn(resendVerificationFn)
@@ -434,7 +445,9 @@ function EmailRow({ email, hasOtherEmails }: { email: EmailRowData; hasOtherEmai
 					setResponse(undefined)
 					const submitter = (ev.nativeEvent as SubmitEvent).submitter
 					const type =
-						submitter instanceof HTMLButtonElement ? submitter.getAttribute('value') : null
+						submitter instanceof HTMLButtonElement
+							? submitter.getAttribute('value')
+							: null
 					let result: ActionResult
 					switch (type) {
 						case 'resendValidation':
@@ -586,9 +599,9 @@ function DeleteAccount() {
 				<fieldset>
 					<legend>danger zone</legend>
 					<p>
-						This is it. <b>Press this button and your account will be deleted.</b> We&apos;re sorry
-						to see you go, please don&apos;t hesitate to reach out and let us know why you no longer
-						want your account.
+						This is it. <b>Press this button and your account will be deleted.</b>{' '}
+						We&apos;re sorry to see you go, please don&apos;t hesitate to reach out and
+						let us know why you no longer want your account.
 					</p>
 					{response?.formErrors?.map((e) => (
 						<div className="field-error" key={e}>
@@ -610,8 +623,9 @@ function DeleteAccount() {
 			<fieldset>
 				<legend>danger zone</legend>
 				<div>
-					You&apos;ve been sent an email with a confirmation link in it, you must click it to
-					confirm that you are the account holder so that you may continue deleting your account.
+					You&apos;ve been sent an email with a confirmation link in it, you must click it
+					to confirm that you are the account holder so that you may continue deleting
+					your account.
 				</div>
 			</fieldset>
 		)

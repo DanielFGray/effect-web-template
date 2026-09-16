@@ -1,120 +1,124 @@
-import { Effect } from "effect";
-import { PgRootDB, sql } from "../db.js";
-import { catchSql } from "../db.js";
-import { SessionNotFound, InternalError } from "../../shared/errors.js";
+import { Effect } from 'effect'
 
-export class Sessions extends Effect.Service<Sessions>()("Auth/SessionService", {
-  accessors: true,
-  effect: Effect.gen(function* () {
-    const db = yield* PgRootDB;
+import { SessionNotFound, InternalError } from '../../shared/errors.js'
+import { PgRootDB, sql } from '../db.js'
+import { catchSql } from '../db.js'
 
-    const queries = {
-      validateSession: (sessionId: string) =>
-        db
-          .selectFrom("app_private.sessions as s")
-          .innerJoin("app_public.users as u", "u.id", "s.user_id")
-          .select([
-            "s.uuid as session_id",
-            "u.id as user_id",
-            "u.username",
-            "u.name",
-            "u.avatar_url",
-            "u.role",
-            "u.is_verified",
-          ])
-          .where("s.uuid", "=", sessionId)
-          .where(sql<boolean>`s.last_active > now() - '30 days'::interval`),
+export class Sessions extends Effect.Service<Sessions>()('Auth/SessionService', {
+	accessors: true,
+	effect: Effect.gen(function* () {
+		const db = yield* PgRootDB
 
-      createSession: (userId: string) =>
-        db
-          .insertInto("app_private.sessions")
-          .values({ user_id: userId })
-          .returning(["uuid", "user_id", "created_at", "last_active"]),
+		const queries = {
+			validateSession: (sessionId: string) =>
+				db
+					.selectFrom('app_private.sessions as s')
+					.innerJoin('app_public.users as u', 'u.id', 's.user_id')
+					.select([
+						's.uuid as session_id',
+						'u.id as user_id',
+						'u.username',
+						'u.name',
+						'u.avatar_url',
+						'u.role',
+						'u.is_verified',
+					])
+					.where('s.uuid', '=', sessionId)
+					.where(sql<boolean>`s.last_active > now() - '30 days'::interval`),
 
-      getUserSessions: (userId: string) =>
-        db
-          .selectFrom("app_private.sessions")
-          .selectAll()
-          .where("user_id", "=", userId)
-          .where("last_active", ">", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
-          .orderBy("last_active", "desc"),
+			createSession: (userId: string) =>
+				db
+					.insertInto('app_private.sessions')
+					.values({ user_id: userId })
+					.returning(['uuid', 'user_id', 'created_at', 'last_active']),
 
-      deleteSession: (sessionId: string) =>
-        db.deleteFrom("app_private.sessions").where("uuid", "=", sessionId),
+			getUserSessions: (userId: string) =>
+				db
+					.selectFrom('app_private.sessions')
+					.selectAll()
+					.where('user_id', '=', userId)
+					.where('last_active', '>', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
+					.orderBy('last_active', 'desc'),
 
-      deleteAllUserSessions: (userId: string) =>
-        db.deleteFrom("app_private.sessions").where("user_id", "=", userId),
-    };
+			deleteSession: (sessionId: string) =>
+				db.deleteFrom('app_private.sessions').where('uuid', '=', sessionId),
 
-    return {
-      queries,
+			deleteAllUserSessions: (userId: string) =>
+				db.deleteFrom('app_private.sessions').where('user_id', '=', userId),
+		}
 
-      validateSession: Effect.fn("db:session:validate")(
-        queries.validateSession,
-        Effect.head,
-        Effect.mapError((error) =>
-          error._tag === "NoSuchElementException"
-            ? new SessionNotFound({
-                message: "Session not found or expired",
-              })
-            : error,
-        ),
-        catchSql,
-      ),
+		return {
+			queries,
 
-      getUserSessions: Effect.fn("db:session:getUserSessions")(queries.getUserSessions, catchSql),
+			validateSession: Effect.fn('db:session:validate')(
+				queries.validateSession,
+				Effect.head,
+				Effect.mapError((error) =>
+					error._tag === 'NoSuchElementException'
+						? new SessionNotFound({
+								message: 'Session not found or expired',
+							})
+						: error,
+				),
+				catchSql,
+			),
 
-      createSession: Effect.fn("db:session:insert")(
-        queries.createSession,
-        Effect.head,
-        catchSql,
-        Effect.mapError((error) =>
-          error._tag === "NoSuchElementException"
-            ? new InternalError({ message: "Failed to create session" })
-            : error,
-        ),
-      ),
+			getUserSessions: Effect.fn('db:session:getUserSessions')(
+				queries.getUserSessions,
+				catchSql,
+			),
 
-      deleteSession: Effect.fn("db:session:delete")(
-        queries.deleteSession,
-        Effect.head,
-        Effect.map((first) => first.numDeletedRows > 0),
-        catchSql,
-        Effect.mapError((error) =>
-          error._tag === "NoSuchElementException"
-            ? new InternalError({ message: "Failed to delete session" })
-            : error,
-        ),
-      ),
+			createSession: Effect.fn('db:session:insert')(
+				queries.createSession,
+				Effect.head,
+				catchSql,
+				Effect.mapError((error) =>
+					error._tag === 'NoSuchElementException'
+						? new InternalError({ message: 'Failed to create session' })
+						: error,
+				),
+			),
 
-      deleteAllUserSessions: Effect.fn("db:session:deleteAllUserSessions")(
-        queries.deleteAllUserSessions,
-        Effect.head,
-        Effect.map((first) => first.numDeletedRows),
-        catchSql,
-        Effect.mapError((error) =>
-          error._tag === "NoSuchElementException"
-            ? new InternalError({ message: "Failed to delete sessions" })
-            : error,
-        ),
-      ),
-    } as const;
-  }),
+			deleteSession: Effect.fn('db:session:delete')(
+				queries.deleteSession,
+				Effect.head,
+				Effect.map((first) => first.numDeletedRows > 0),
+				catchSql,
+				Effect.mapError((error) =>
+					error._tag === 'NoSuchElementException'
+						? new InternalError({ message: 'Failed to delete session' })
+						: error,
+				),
+			),
+
+			deleteAllUserSessions: Effect.fn('db:session:deleteAllUserSessions')(
+				queries.deleteAllUserSessions,
+				Effect.head,
+				Effect.map((first) => first.numDeletedRows),
+				catchSql,
+				Effect.mapError((error) =>
+					error._tag === 'NoSuchElementException'
+						? new InternalError({ message: 'Failed to delete sessions' })
+						: error,
+				),
+			),
+		} as const
+	}),
 }) {
-  static Live = Sessions.Default;
+	static Live = Sessions.Default
 
-  static Test = Effect.succeed({
-    validateSession: () =>
-      Effect.fail(new SessionNotFound({ message: "Session not found or expired" })),
-    createSession: () =>
-      Effect.succeed({
-        uuid: "test-session",
-        user_id: "test-user",
-        created_at: new Date(),
-        last_active: new Date(),
-      }),
-    deleteSession: () => Effect.succeed(true),
-    getUserSessions: () => Effect.succeed([]),
-    deleteAllUserSessions: () => Effect.succeed(0),
-  } as const);
+	static Test = Effect.succeed({
+		validateSession: () =>
+			Effect.fail(new SessionNotFound({ message: 'Session not found or expired' })),
+		createSession: () =>
+			Effect.succeed({
+				uuid: 'test-session',
+				user_id: 'test-user',
+				created_at: new Date(),
+				last_active: new Date(),
+			}),
+		deleteSession: () => Effect.succeed(true),
+		getUserSessions: () => Effect.succeed([]),
+		deleteAllUserSessions: () => Effect.succeed(0),
+	} as const)
 }

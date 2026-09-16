@@ -1,9 +1,4 @@
 import {
-	getRequestHeader,
-	setResponseHeader,
-} from '@tanstack/react-start/server'
-import { Effect } from 'effect'
-import {
 	Cookies,
 	FetchHttpClient,
 	HttpApiClient,
@@ -11,6 +6,9 @@ import {
 	HttpClientRequest,
 	type HttpClientResponse,
 } from '@effect/platform'
+import { getRequestHeader, setResponseHeader } from '@tanstack/react-start/server'
+import { Effect } from 'effect'
+
 import { Contract } from '../../shared/httpApi.js'
 
 /**
@@ -21,9 +19,7 @@ import { Contract } from '../../shared/httpApi.js'
  * `.server.` suffix keeps the module out of the client bundle, which matters
  * because importing it pulls in the whole Effect graph.
  */
-export const callApi = <A, E>(
-	f: (api: ApiClient) => Effect.Effect<A, E>,
-): Promise<A> =>
+export const callApi = <A, E>(f: (api: ApiClient) => Effect.Effect<A, E>): Promise<A> =>
 	Effect.gen(function* () {
 		const api = yield* makeApiClient()
 		return yield* f(api)
@@ -59,9 +55,7 @@ const makeApiClient = () => {
 type ApiClient = Effect.Effect.Success<ReturnType<typeof makeApiClient>>
 
 /** Copy Set-Cookie from the Effect API's response onto the TanStack Start response. */
-const forwardSetCookie = (
-	response: HttpClientResponse.HttpClientResponse,
-): void => {
+const forwardSetCookie = (response: HttpClientResponse.HttpClientResponse): void => {
 	const setCookieHeaders = Cookies.toSetCookieHeaders(response.cookies)
 	if (setCookieHeaders.length > 0) {
 		setResponseHeader('set-cookie', setCookieHeaders)

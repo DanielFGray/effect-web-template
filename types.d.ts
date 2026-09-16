@@ -1,1 +1,1 @@
-type Prettify<T> = { [K in keyof T]: T[K] } & {};
+type Prettify<T> = { [K in keyof T]: T[K] } & {}

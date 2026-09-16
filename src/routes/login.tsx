@@ -1,18 +1,12 @@
-import { useState } from 'react'
-import {
-	createFileRoute,
-	Link,
-	useNavigate,
-	useRouter,
-} from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { createServerFn, useServerFn } from '@tanstack/react-start'
 import { Effect } from 'effect'
-import { callApi } from '../lib/api.server.js'
-import { Form, formResultFromError, type FormResult } from '../components.js'
+import { useState } from 'react'
 
-type ActionResult =
-	| { ok: true; data: null }
-	| { ok: false; error: FormResult }
+import { Form, formResultFromError, type FormResult } from '../components.js'
+import { callApi } from '../lib/api.server.js'
+
+type ActionResult = { ok: true; data: null } | { ok: false; error: FormResult }
 
 const loginFn = createServerFn({ method: 'POST' })
 	.validator((data: { id: string; password: string }) => data)
@@ -109,10 +103,7 @@ function Login() {
 			</Form>
 			<div className="text-center">
 				<div>
-					<Link
-						to="/register"
-						search={redirectTo ? { redirectTo } : undefined}
-					>
+					<Link to="/register" search={redirectTo ? { redirectTo } : undefined}>
 						I need an account
 					</Link>
 				</div>
