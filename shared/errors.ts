@@ -23,6 +23,10 @@ export class InvalidCredentials extends S.TaggedError<InvalidCredentials>()(
 	{ message: S.String },
 ) {}
 
+export class InvalidToken extends S.TaggedError<InvalidToken>()('InvalidToken', {
+	message: S.String,
+}) {}
+
 export class MissingData extends S.TaggedError<MissingData>()('MissingData', {
 	message: S.String,
 	field: S.Literal('email', 'password', 'username'),

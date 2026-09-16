@@ -68,13 +68,11 @@ function Nav() {
 							</Link>
 						</li>
 						<li>
-							<Link
-								to="/logout"
-								data-cy="nav-logout"
-								activeProps={{ 'aria-current': 'page' }}
-							>
-								log out
-							</Link>
+							<form method="post" action="/logout">
+								<button type="submit" data-cy="nav-logout">
+									log out
+								</button>
+							</form>
 						</li>
 					</>
 				) : (

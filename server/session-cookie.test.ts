@@ -4,8 +4,8 @@ import { Config, Duration, Effect, Layer, Option } from 'effect'
 
 /**
  * Start session-cookie adapter must set Set-Cookie on every login/register/
- * logout — not roughly one request in ten. Hits the no-JS form handlers and
- * the logout server function against the Vite/Start server on VITE_ROOT_URL.
+ * logout — not roughly one request in ten. Hits the no-JS form handlers
+ * against the Vite/Start server on VITE_ROOT_URL.
  */
 const TestHttpClientLive = Layer.merge(
 	FetchHttpClient.layer,
@@ -18,24 +18,6 @@ const origin = Config.string('VITE_ROOT_URL').pipe(
 
 const runId = Math.random().toString(36).slice(2, 8)
 const password = 'password123'
-
-/**
- * Dev-server id for logoutFn — stable encoding of file+export (no padding).
- *
- * Logout is the one auth action with no no-JS form handler, so the server
- * function endpoint is the only way to reach the adapter's cookie clear. This
- * encoding is a Start internal: renaming the file or the export breaks this
- * with a 404. ts-32f4c1 gives logout a form handler; post the form here then
- * and delete this.
- */
-const logoutServerFnId = Buffer.from(
-	JSON.stringify({
-		file: '/src/routes/logout.tsx?tss-serverfn-split',
-		export: 'logoutFn_createServerFn_handler',
-	}),
-)
-	.toString('base64')
-	.replace(/=+$/, '')
 
 const assertSessionCookie = (cookies: Cookies.Cookies) => {
 	const session = Cookies.get(cookies, 'session')
@@ -222,15 +204,13 @@ suite('Start session cookie (no-JS forms)', () => {
 					Cookies.fromReadonlyRecord({ session: session.value }),
 				)
 
-				const logout = yield* HttpClientRequest.post(
-					`${base}/_serverFn/${logoutServerFnId}`,
-				).pipe(
-					HttpClientRequest.setHeader('Origin', base),
-					HttpClientRequest.setHeader('x-tsr-serverFn', 'true'),
+				const logout = yield* HttpClientRequest.post(`${base}/logout`).pipe(
+					HttpClientRequest.setHeader('Accept', 'text/html'),
 					HttpClientRequest.setHeader('Cookie', cookieHeader),
 					client.execute,
 				)
-				expect(logout.status).toBe(200)
+				expect(logout.status).toBe(307)
+				expect(logout.headers.location).toBe('/')
 
 				const cleared = Cookies.get(logout.cookies, 'session')
 				expect(Option.isSome(cleared)).toBe(true)

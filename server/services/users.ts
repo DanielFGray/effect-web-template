@@ -7,6 +7,7 @@ import {
 	WeakPassword,
 	AuthenticationRequired,
 	InvalidCredentials,
+	InvalidToken,
 	MissingData,
 	AccountAlreadyLinked,
 	UsernameTaken,
@@ -209,12 +210,16 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 					.returningAll()
 					.pipe(
 						Effect.head,
-						fromSql,
-						Effect.mapError((error) =>
-							error._tag === 'NoSuchElementException'
-								? new InternalError({ message: 'Profile update failed' })
-								: error,
+						// Empty RETURNING when current_user_id() is null — expected unauthenticated outcome.
+						Effect.catchTag('NoSuchElementException', () =>
+							Effect.fail(
+								new AuthenticationRequired({
+									message: 'You must log in to update your profile',
+									action: 'update_profile',
+								}),
+							),
 						),
+						fromSql,
 					)
 			}),
 
@@ -276,6 +281,16 @@ export class Users extends Effect.Service<Users>()('User/Accounts', {
 			resetPassword: Effect.fn('db:user:resetPassword')(
 				queries.resetPassword,
 				Effect.head,
+				// app_private.reset_password returns one row with NULL for bad/stale tokens.
+				Effect.flatMap((row) =>
+					row.reset_password === true
+						? Effect.succeed(row)
+						: Effect.fail(
+								new InvalidToken({
+									message: 'invalid or expired password reset token',
+								}),
+							),
+				),
 				fromSql,
 				Effect.mapError((error) =>
 					error._tag === 'NoSuchElementException'

@@ -192,6 +192,8 @@ suite('organizations HTTP flow', () => {
 			)(afterDelete)
 			expect(gone).toBeNull()
 		}).pipe(Effect.provide(TestHttpClientLive)),
+		// Cold full-suite import ~6s + alone wall ~3s; default 5s flakes on cold start.
+		{ timeout: 15_000 },
 	)
 
 	it.live('invite to org you do not own returns AccessDenied', () =>
@@ -246,5 +248,6 @@ suite('organizations HTTP flow', () => {
 			)
 			expect(inviteDenied.status).toBe(403)
 		}).pipe(Effect.provide(TestHttpClientLive)),
+		{ timeout: 15_000 },
 	)
 })

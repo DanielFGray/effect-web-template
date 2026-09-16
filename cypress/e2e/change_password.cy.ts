@@ -34,9 +34,8 @@ context('change password', () => {
 		// Assertion
 		cy.contains('password updated').should('exist')
 
-		// Action
+		// Action — nav logout is a POST form; one click ends the session
 		cy.getCy('nav-logout').click()
-		cy.getCy('logout-submit').click() // log out
 
 		// should be logged out
 		cy.getCy('nav-login').should('exist')

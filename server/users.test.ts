@@ -8,7 +8,7 @@ import { FetchHttpClient } from '@effect/platform'
 import { suite, expect, it } from '@effect/vitest'
 import { Effect, Ref, Option, Config } from 'effect'
 
-import { InvalidCredentials } from '../shared/errors.js'
+import { AuthenticationRequired, InvalidCredentials, InvalidToken } from '../shared/errors.js'
 import { User } from '../shared/schemas.js'
 
 // Test layer that provides HTTP client for testing against running server
@@ -283,6 +283,51 @@ suite('user registration HTTP flow', () => {
 			const error = yield* HttpClientResponse.schemaBodyJson(InvalidCredentials)(response)
 			expect(error._tag).toBe('InvalidCredentials')
 			expect(error.message).toBe('invalid username or password')
+		}).pipe(Effect.provide(TestHttpClientLive)),
+	)
+
+	it.live('PATCH /profile with no session cookie returns 401 AuthenticationRequired', () =>
+		Effect.gen(function* () {
+			const client = yield* HttpClient.HttpClient
+
+			const response = yield* HttpClientRequest.patch(`${yield* baseUrl}/profile`).pipe(
+				HttpClientRequest.bodyJson({
+					username: `unauth_${runId}`,
+					name: 'Unauthenticated',
+					bio: null,
+					avatar_url: null,
+				}),
+				Effect.flatMap(client.execute),
+			)
+
+			expect(response.status).toBe(401)
+			const error = yield* HttpClientResponse.schemaBodyJson(AuthenticationRequired)(
+				response,
+			)
+			expect(error._tag).toBe('AuthenticationRequired')
+			expect(error.action).toBe('update_profile')
+		}).pipe(Effect.provide(TestHttpClientLive)),
+	)
+
+	it.live('bad reset token returns 400 InvalidToken', () =>
+		Effect.gen(function* () {
+			const client = yield* HttpClient.HttpClient
+
+			const response = yield* HttpClientRequest.post(
+				`${yield* baseUrl}/auth/reset-password`,
+			).pipe(
+				HttpClientRequest.bodyJson({
+					userId: '00000000-0000-0000-0000-000000000000',
+					token: 'made-up-token',
+					password: 'newpassword123',
+				}),
+				Effect.flatMap(client.execute),
+			)
+
+			expect(response.status).toBe(400)
+			const error = yield* HttpClientResponse.schemaBodyJson(InvalidToken)(response)
+			expect(error._tag).toBe('InvalidToken')
+			expect(error.message).toBe('invalid or expired password reset token')
 		}).pipe(Effect.provide(TestHttpClientLive)),
 	)
 })

@@ -4,6 +4,7 @@ import { Schema as S } from 'effect'
 import {
 	InternalError,
 	InvalidCredentials,
+	InvalidToken,
 	AccountLocked,
 	WeakPassword,
 	MissingData,
@@ -113,7 +114,8 @@ const UsersGroup = HttpApiGroup.make('users')
 	.add(
 		HttpApiEndpoint.post('resetPassword', '/auth/reset-password')
 			.setPayload(ResetPasswordPayload)
-			.addSuccess(S.Struct({ reset_password: S.Boolean })),
+			.addSuccess(S.Struct({ reset_password: S.Boolean }))
+			.addError(InvalidToken, { status: 400 }),
 	)
 	.add(
 		HttpApiEndpoint.post('changePassword', '/auth/change-password')
@@ -126,7 +128,8 @@ const UsersGroup = HttpApiGroup.make('users')
 	.add(
 		HttpApiEndpoint.patch('updateProfile', '/profile')
 			.setPayload(UpdateProfilePayload)
-			.addSuccess(User.select),
+			.addSuccess(User.select)
+			.addError(AuthenticationRequired, { status: 401 }),
 	)
 	.add(
 		HttpApiEndpoint.post('oauthLink')`/auth/${HttpApiSchema.param('provider', S.String)}`
