@@ -19,20 +19,20 @@ context('change password', () => {
 		cy.url().should('equal', Cypress.env('VITE_ROOT_URL') + '/settings') // Should be on settings
 
 		// Action
-		cy.getCy('settings-old-password-input').type('oldpassword!') // use incorrect password
-		cy.getCy('settings-new-password-input').type('newpassword')
-		cy.getCy('settings-confirm-password-input').type('newpassword')
+		cy.get('input[name=oldPassword]').type('oldpassword!') // use incorrect password
+		cy.get('input[name=newPassword]').type('newpassword')
+		cy.get('input[name=confirmPassword]').type('newpassword')
 		cy.getCy('settings-change-password-submit').click()
 
 		// Assertion
-		cy.contains('password was incorrect').should('exist') // should fail
+		cy.contains('Incorrect password').should('exist') // should fail
 
 		// use correct password
-		cy.getCy('settings-old-password-input').type('{backspace}')
+		cy.get('input[name=oldPassword]').type('{backspace}')
 		cy.getCy('settings-change-password-submit').click()
 
 		// Assertion
-		cy.contains('password updated').should('exist')
+		cy.contains('Password updated').should('exist')
 
 		// Action — nav logout is a POST form; one click ends the session
 		cy.getCy('nav-logout').click()

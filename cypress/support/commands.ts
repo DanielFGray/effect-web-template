@@ -121,15 +121,72 @@ function serverCommand(
 	payload?: { username?: string },
 ): Chainable<{ success: true }>
 
-// The actual implementation of the 'serverCommand' function.
-function serverCommand(command: string, payload?: any): any {
-	const url = `${Cypress.env(
-		'VITE_ROOT_URL',
-	)}/api/cypressServerCommand?command=${encodeURIComponent(command)}${
-		payload ? `&payload=${encodeURIComponent(JSON.stringify(payload))}` : ''
-	}`
-	// GET the url, and return the response body (JSON is parsed automatically)
-	return cy.request(url).its('body')
+type TestingPayload = {
+	username?: string
+	email?: string
+	verified?: boolean
+	name?: string
+	avatarUrl?: string | null
+	password?: string
+}
+
+type TestingCommand =
+	| 'clearTestUsers'
+	| 'clearTestOrganizations'
+	| 'createUser'
+	| 'getUserSecrets'
+	| 'getEmailSecrets'
+	| 'verifyUser'
+
+type TestingResult =
+	| { success: boolean }
+	| { user: User; userEmailId: string; verificationToken: string | null }
+	| {
+			user_id: string
+			password_hash: string | null
+			delete_account_token: string | null
+			delete_account_token_generated: string | null
+			reset_password_token: string | null
+	  }
+	| { user_email_id: string; verification_token: string | null }
+
+// The testing API has one typed endpoint per Cypress helper operation.
+function serverCommand(
+	command: TestingCommand,
+	payload?: TestingPayload,
+): Chainable<TestingResult> {
+	const root = Cypress.env('VITE_ROOT_URL')
+
+	switch (command) {
+		case 'clearTestUsers':
+		case 'clearTestOrganizations':
+			return cy.request(`${root}/api/${command}`).its('body')
+		case 'createUser':
+			return cy
+				.request({ method: 'POST', url: `${root}/api/createUser`, body: payload })
+				.its('body')
+		case 'getUserSecrets':
+			return cy
+				.request(
+					`${root}/api/getUserSecrets?username=${encodeURIComponent(payload?.username ?? 'testuser')}`,
+				)
+				.its('body')
+		case 'getEmailSecrets':
+			return cy
+				.request(
+					`${root}/api/getEmailSecrets?email=${encodeURIComponent(payload?.email ?? 'testuser@example.com')}`,
+				)
+				.its('body')
+		case 'verifyUser':
+			return cy
+				.request(
+					`${root}/api/verifyUser?username=${encodeURIComponent(payload?.username ?? 'testuser')}`,
+				)
+				.its('body')
+		default:
+			const _exhaustive: never = command
+			return _exhaustive
+	}
 }
 
 function login(payload?: {
@@ -140,10 +197,26 @@ function login(payload?: {
 	password?: string | null
 	orgs?: [[string, string] | [string, string, boolean]]
 }): Chainable<Window> {
-	return cy.visit(
-		Cypress.env('VITE_ROOT_URL') +
-			`/api/cypressServerCommand?command=login&payload=${encodeURIComponent(JSON.stringify(payload))}`,
-	)
+	const username = payload?.username ?? 'testuser'
+	const password = payload?.password ?? 'TestUserPassword'
+	const redirectTo = payload?.redirectTo ?? '/'
+
+	return cy
+		.serverCommand('createUser', {
+			username,
+			name: payload?.name,
+			verified: payload?.verified,
+			password,
+		})
+		.then(() =>
+			cy
+				.request({
+					method: 'POST',
+					url: `${Cypress.env('VITE_ROOT_URL')}/api/auth/login`,
+					body: { id: username, password },
+				})
+				.then(() => cy.visit(Cypress.env('VITE_ROOT_URL') + redirectTo)),
+		)
 }
 
 Cypress.Commands.add('getCy', getCy)
