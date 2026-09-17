@@ -17,6 +17,7 @@ context('change password', () => {
 		cy.login({ redirectTo: '/settings', password: 'oldpassword', verified: true })
 
 		cy.url().should('equal', Cypress.env('VITE_ROOT_URL') + '/settings') // Should be on settings
+		cy.getCy('settings-password-form').should('have.attr', 'novalidate')
 
 		// Action
 		cy.get('input[name=oldPassword]').type('oldpassword!') // use incorrect password
@@ -41,7 +42,8 @@ context('change password', () => {
 		cy.getCy('nav-login').should('exist')
 
 		cy.getCy('nav-login').click()
-		cy.getCy('login-username-input').type('testuser')
+		cy.get('form').should('have.attr', 'novalidate')
+		cy.getCy('login-id-input').type('testuser')
 		cy.getCy('login-password-input').type('newpassword')
 		cy.getCy('login-submit-button').click()
 
