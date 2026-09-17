@@ -1,6 +1,5 @@
-export function isValidPassword(password: unknown) {
+export function isValidPassword(password: string): boolean {
 	return (
-		typeof password === 'string' &&
 		password.length >= 8 &&
 		// Previously supplied by NonEmptyTrimmedString. Kept as one predicate so
 		// a failure has a single message that never quotes the password back.

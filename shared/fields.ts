@@ -10,6 +10,7 @@
  * into the page and Effect's default messages quote the offending value back.
  */
 import { Schema as S } from 'effect'
+import type * as AST from 'effect/SchemaAST'
 
 import { isValidEmail, isValidPassword } from './validation.js'
 
@@ -85,7 +86,7 @@ function nullable(options: {
 	title?: string
 	predicate: (value: string) => boolean
 	message: string
-	jsonSchema: Record<string, unknown>
+	jsonSchema: AST.JSONSchemaAnnotation
 }) {
 	return S.transform(S.NullOr(S.String), S.NullOr(S.String), {
 		decode: (value) => (value === null || value.trim() === '' ? null : value),
@@ -93,7 +94,7 @@ function nullable(options: {
 	}).pipe(
 		S.filter((value) => value === null || options.predicate(value), {
 			identifier: options.identifier,
-			...(options.title === undefined ? null : { title: options.title }),
+			title: options.title,
 			jsonSchema: options.jsonSchema,
 			message: () => options.message,
 		}),

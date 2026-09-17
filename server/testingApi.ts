@@ -3,9 +3,31 @@ import { Config, Effect, Layer, Schema as S } from 'effect'
 
 import { InternalError } from '../shared/errors.js'
 import { Contract } from '../shared/httpApi.js'
+import { User } from '../shared/schemas.js'
 import { PgRootDB } from './db.js'
 import { fromSql } from './db.js'
 import { Users } from './services/users.js'
+
+const UserSecrets = S.Struct({
+	delete_account_token: S.NullOr(S.String),
+	delete_account_token_generated: S.NullOr(S.Date),
+	failed_password_attempts: S.Number,
+	failed_reset_password_attempts: S.Number,
+	first_failed_password_attempt: S.NullOr(S.Date),
+	first_failed_reset_password_attempt: S.NullOr(S.Date),
+	last_login_at: S.Date,
+	password_hash: S.NullOr(S.String),
+	reset_password_token: S.NullOr(S.String),
+	reset_password_token_generated: S.NullOr(S.Date),
+	user_id: S.UUID,
+})
+
+const EmailSecrets = S.Struct({
+	password_reset_email_sent_at: S.NullOr(S.Date),
+	user_email_id: S.UUID,
+	verification_email_sent_at: S.NullOr(S.Date),
+	verification_token: S.NullOr(S.String),
+})
 
 const TestingApiGroup = HttpApiGroup.make('TestingApi')
 	.add(
@@ -32,7 +54,7 @@ const TestingApiGroup = HttpApiGroup.make('TestingApi')
 			)
 			.addSuccess(
 				S.Struct({
-					user: S.Object,
+					user: User.select,
 					userEmailId: S.String,
 					verificationToken: S.NullOr(S.String),
 				}),
@@ -42,13 +64,13 @@ const TestingApiGroup = HttpApiGroup.make('TestingApi')
 	.add(
 		HttpApiEndpoint.get('getUserSecrets', '/getUserSecrets')
 			.setPayload(S.Struct({ username: S.String }))
-			.addSuccess(S.Object)
+			.addSuccess(UserSecrets)
 			.addError(InternalError, { status: 500 }),
 	)
 	.add(
 		HttpApiEndpoint.get('getEmailSecrets', '/getEmailSecrets')
 			.setPayload(S.Struct({ email: S.String }))
-			.addSuccess(S.Object)
+			.addSuccess(EmailSecrets)
 			.addError(InternalError, { status: 500 }),
 	)
 	.add(
