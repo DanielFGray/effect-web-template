@@ -97,8 +97,6 @@ export const Route = createFileRoute('/login')({
 
 function Login() {
 	const { user, loginAction } = Route.useRouteContext()
-	const [id, setId] = useState(loginAction?.values.id ?? '')
-	const [password, setPassword] = useState('')
 	const [response, setResponse] = useState<FormResult | undefined>(loginAction?.response)
 	const navigate = useNavigate()
 	const router = useRouter()
@@ -121,8 +119,11 @@ function Login() {
 				response={response}
 				onSubmit={async (ev) => {
 					ev.preventDefault()
+					const form = ev.currentTarget
 					setResponse(undefined)
-					const decoded = Schema.decodeUnknownEither(LoginPayload)({ id, password })
+					const decoded = Schema.decodeUnknownEither(LoginPayload)(
+						Object.fromEntries(new FormData(form).entries()),
+					)
 					if (decoded._tag === 'Left') {
 						setResponse(formResultFromParseError(decoded.left))
 						return
@@ -146,15 +147,12 @@ function Login() {
 						type="text"
 						label="username or email"
 						name="id"
-						value={id}
-						onChange={(e) => setId(e.target.value)}
+						defaultValue={loginAction?.values.id ?? ''}
 					/>
 					<Form.Row
 						{...formConstraints['users.login'].password}
 						type="password"
 						name="password"
-						value={password}
-						onChange={(e) => setPassword(e.target.value)}
 					/>
 					<div>
 						{response?.formErrors?.map((e) => (

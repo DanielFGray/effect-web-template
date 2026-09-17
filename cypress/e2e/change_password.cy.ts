@@ -17,8 +17,6 @@ context('change password', () => {
 		cy.login({ redirectTo: '/settings', password: 'oldpassword', verified: true })
 
 		cy.url().should('equal', Cypress.env('VITE_ROOT_URL') + '/settings') // Should be on settings
-		cy.getCy('settings-password-form').should('have.attr', 'novalidate')
-
 		// Action
 		cy.get('input[name=oldPassword]').type('oldpassword!') // use incorrect password
 		cy.get('input[name=newPassword]').type('newpassword')
@@ -29,7 +27,10 @@ context('change password', () => {
 		cy.contains('Incorrect password').should('exist') // should fail
 
 		// use correct password
-		cy.get('input[name=oldPassword]').type('{backspace}')
+		cy.reload()
+		cy.get('input[name=oldPassword]').clear().type('oldpassword')
+		cy.get('input[name=newPassword]').clear().type('newpassword')
+		cy.get('input[name=confirmPassword]').clear().type('newpassword')
 		cy.getCy('settings-change-password-submit').click()
 
 		// Assertion
@@ -42,7 +43,6 @@ context('change password', () => {
 		cy.getCy('nav-login').should('exist')
 
 		cy.getCy('nav-login').click()
-		cy.get('form').should('have.attr', 'novalidate')
 		cy.getCy('login-id-input').type('testuser')
 		cy.getCy('login-password-input').type('newpassword')
 		cy.getCy('login-submit-button').click()

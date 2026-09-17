@@ -26,6 +26,7 @@ import {
 	formResultFromParseError,
 	type FormResult,
 } from '../components.js'
+import { decodeFormAction, formDataRecord, type FormAction } from '../lib/formAction.js'
 import { runServer } from '../lib/runtime.server.js'
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: FormResult }
@@ -37,6 +38,25 @@ type EmailRowData = {
 	is_primary: boolean
 	created_at: string
 }
+
+type SettingsAction =
+	| { type: 'profile'; values: Record<string, string>; response: FormResult }
+	| { type: 'password'; values: Record<string, string>; response: FormResult }
+	| { type: 'addEmail'; values: Record<string, string>; response: FormResult }
+	| { type: 'email'; values: Record<string, string>; response: FormResult }
+	| { type: 'deleteRequest'; values: Record<string, string>; response: FormResult }
+	| { type: 'deleteConfirm'; values: Record<string, string>; response: FormResult }
+
+const actionResponse = (
+	type: SettingsAction['type'],
+	values: Record<string, string>,
+	response: FormResult,
+) =>
+	({
+		type,
+		values,
+		response,
+	}) as SettingsAction
 
 const getEmails = createServerFn({ method: 'GET' }).handler(async () => {
 	const emails = await runServer(Email.listMine().pipe(withAuthContext))
@@ -52,6 +72,22 @@ const getEmails = createServerFn({ method: 'GET' }).handler(async () => {
 	}))
 })
 
+const performUpdateProfile = (data: {
+	username: string
+	name: string | null
+	avatar_url: string | null
+	bio: string | null
+}): Promise<ActionResult> =>
+	runServer(
+		Users.updateProfile(data).pipe(
+			withAuthContext,
+			Effect.as({ ok: true as const, data: null }),
+			Effect.catchAll((err) =>
+				Effect.succeed({ ok: false as const, error: formResultFromError(err) }),
+			),
+		),
+	)
+
 const updateProfileFn = createServerFn({ method: 'POST' })
 	.validator(
 		(data: {
@@ -61,102 +97,70 @@ const updateProfileFn = createServerFn({ method: 'POST' })
 			bio: string | null
 		}) => data,
 	)
-	.handler(({ data }): Promise<ActionResult> =>
-		runServer(
-			Users.updateProfile(data).pipe(
-				withAuthContext,
-				Effect.as({ ok: true as const, data: null }),
-				Effect.catchAll((err) =>
-					Effect.succeed({
-						ok: false as const,
-						error: formResultFromError(err),
-					}),
-				),
+	.handler(({ data }): Promise<ActionResult> => performUpdateProfile(data))
+
+const performChangePassword = (data: {
+	oldPassword: string
+	newPassword: string
+}): Promise<ActionResult> =>
+	runServer(
+		Users.changePassword(data).pipe(
+			withAuthContext,
+			Effect.as({ ok: true as const, data: null }),
+			Effect.catchAll((err) =>
+				Effect.succeed({ ok: false as const, error: formResultFromError(err) }),
 			),
 		),
 	)
 
 const changePasswordFn = createServerFn({ method: 'POST' })
 	.validator((data: { oldPassword: string; newPassword: string }) => data)
-	.handler(({ data }): Promise<ActionResult> =>
-		runServer(
-			Users.changePassword(data).pipe(
-				withAuthContext,
-				Effect.as({ ok: true as const, data: null }),
-				Effect.catchAll((err) =>
-					Effect.succeed({
-						ok: false as const,
-						error: formResultFromError(err),
-					}),
-				),
+	.handler(({ data }): Promise<ActionResult> => performChangePassword(data))
+
+const performAddEmail = (data: { email: string }): Promise<ActionResult> =>
+	runServer(
+		Email.addEmail(data).pipe(
+			withAuthContext,
+			Effect.as({ ok: true as const, data: null }),
+			Effect.catchAll((err) =>
+				Effect.succeed({ ok: false as const, error: formResultFromError(err) }),
 			),
 		),
 	)
 
 const addEmailFn = createServerFn({ method: 'POST' })
 	.validator((data: { email: string }) => data)
-	.handler(({ data }): Promise<ActionResult> =>
-		runServer(
-			Email.addEmail(data).pipe(
-				withAuthContext,
-				Effect.as({ ok: true as const, data: null }),
-				Effect.catchAll((err) =>
-					Effect.succeed({
-						ok: false as const,
-						error: formResultFromError(err),
-					}),
-				),
+	.handler(({ data }): Promise<ActionResult> => performAddEmail(data))
+
+const performResendVerification = (data: { id: string }): Promise<ActionResult> =>
+	runServer(
+		Email.resendVerificationEmail({ emailId: data.id }).pipe(
+			withAuthContext,
+			Effect.as({ ok: true as const, data: null }),
+			Effect.catchAll((err) =>
+				Effect.succeed({ ok: false as const, error: formResultFromError(err) }),
 			),
 		),
 	)
 
-const resendVerificationFn = createServerFn({ method: 'POST' })
-	.validator((data: { id: string }) => data)
-	.handler(({ data }): Promise<ActionResult> =>
-		runServer(
-			Email.resendVerificationEmail({ emailId: data.id }).pipe(
-				withAuthContext,
-				Effect.as({ ok: true as const, data: null }),
-				Effect.catchAll((err) =>
-					Effect.succeed({
-						ok: false as const,
-						error: formResultFromError(err),
-					}),
-				),
+const performRemoveEmail = (data: { id: string }): Promise<ActionResult> =>
+	runServer(
+		Email.removeEmail({ emailId: data.id }).pipe(
+			withAuthContext,
+			Effect.as({ ok: true as const, data: null }),
+			Effect.catchAll((err) =>
+				Effect.succeed({ ok: false as const, error: formResultFromError(err) }),
 			),
 		),
 	)
 
-const removeEmailFn = createServerFn({ method: 'POST' })
-	.validator((data: { id: string }) => data)
-	.handler(({ data }): Promise<ActionResult> =>
-		runServer(
-			Email.removeEmail({ emailId: data.id }).pipe(
-				withAuthContext,
-				Effect.as({ ok: true as const, data: null }),
-				Effect.catchAll((err) =>
-					Effect.succeed({
-						ok: false as const,
-						error: formResultFromError(err),
-					}),
-				),
-			),
-		),
-	)
-
-const makeEmailPrimaryFn = createServerFn({ method: 'POST' })
-	.validator((data: { id: string }) => data)
-	.handler(({ data }): Promise<ActionResult> =>
-		runServer(
-			Email.makeEmailPrimary({ emailId: data.id }).pipe(
-				withAuthContext,
-				Effect.as({ ok: true as const, data: null }),
-				Effect.catchAll((err) =>
-					Effect.succeed({
-						ok: false as const,
-						error: formResultFromError(err),
-					}),
-				),
+const performMakeEmailPrimary = (data: { id: string }): Promise<ActionResult> =>
+	runServer(
+		Email.makeEmailPrimary({ emailId: data.id }).pipe(
+			withAuthContext,
+			Effect.as({ ok: true as const, data: null }),
+			Effect.catchAll((err) =>
+				Effect.succeed({ ok: false as const, error: formResultFromError(err) }),
 			),
 		),
 	)
@@ -176,6 +180,33 @@ const requestDeletionFn = createServerFn({ method: 'POST' }).handler(
 			),
 		),
 )
+
+const performRequestDeletion = (): Promise<ActionResult> =>
+	runServer(
+		Users.requestAccountDeletion().pipe(
+			withAuthContext,
+			Effect.as({ ok: true as const, data: null }),
+			Effect.catchAll((err) =>
+				Effect.succeed({ ok: false as const, error: formResultFromError(err) }),
+			),
+		),
+	)
+
+const performConfirmDeletion = (data: {
+	token: string
+}): Promise<ActionResult<{ confirm_account_deletion: boolean }>> =>
+	runServer(
+		Users.confirmAccountDeletion(data).pipe(
+			withAuthContext,
+			Effect.map((result): ActionResult<{ confirm_account_deletion: boolean }> => ({
+				ok: true,
+				data: result,
+			})),
+			Effect.catchAll((err) =>
+				Effect.succeed({ ok: false as const, error: formResultFromError(err) }),
+			),
+		),
+	)
 
 const confirmDeletionFn = createServerFn({ method: 'POST' })
 	.validator((data: { token: string }) => data)
@@ -202,9 +233,211 @@ export const Route = createFileRoute('/settings')({
 		delete_token:
 			typeof search.delete_token === 'string' ? search.delete_token : undefined,
 		showAddEmail: search.showAddEmail != null ? String(search.showAddEmail) : undefined,
+		passwordUpdated: search.passwordUpdated === '1' ? true : undefined,
 	}),
-	beforeLoad: ({ context }) => {
+	beforeLoad: ({ context, serverContext }) => {
 		if (!context.user) throw redirect({ to: '/login' })
+		return { settingsAction: serverContext?.settingsAction }
+	},
+	server: {
+		handlers: {
+			POST: async ({ request, next }) => {
+				const record = formDataRecord(await request.formData())
+				const action = record.action
+				const values = { ...record }
+				delete values.action
+				const invalidAction = (type: SettingsAction['type']) =>
+					next({
+						context: {
+							settingsAction: actionResponse(type, values, {
+								formErrors: ['Invalid form submission'],
+							}) satisfies FormAction<typeof values>,
+						},
+					})
+
+				switch (action) {
+					case 'profile': {
+						const decoded = decodeFormAction(UpdateProfilePayload, values, values)
+						if (!decoded.ok) {
+							return next({
+								context: {
+									settingsAction: actionResponse(
+										'profile',
+										values,
+										decoded.action.response,
+									),
+								},
+							})
+						}
+						const result = await performUpdateProfile(decoded.payload)
+						if (result.ok)
+							throw redirect({ to: '/settings', search: { passwordUpdated: true } })
+						return next({
+							context: {
+								settingsAction: actionResponse('profile', values, result.error),
+							},
+						})
+					}
+					case 'password': {
+						const decoded = decodeFormAction(ChangePasswordFormPayload, values, {})
+						if (!decoded.ok) {
+							return next({
+								context: {
+									settingsAction: actionResponse('password', {}, decoded.action.response),
+								},
+							})
+						}
+						const result = await performChangePassword(decoded.payload)
+						if (result.ok)
+							throw redirect({ to: '/settings', search: { passwordUpdated: true } })
+						return next({
+							context: { settingsAction: actionResponse('password', {}, result.error) },
+						})
+					}
+					case 'addEmail': {
+						const decoded = decodeFormAction(AddEmailPayload, values, values)
+						if (!decoded.ok) {
+							return next({
+								context: {
+									settingsAction: actionResponse(
+										'addEmail',
+										values,
+										decoded.action.response,
+									),
+								},
+							})
+						}
+						const result = await performAddEmail(decoded.payload)
+						if (result.ok) throw redirect({ to: '/settings' })
+						return next({
+							context: {
+								settingsAction: actionResponse('addEmail', values, result.error),
+							},
+						})
+					}
+					case 'resendVerification': {
+						const decoded = decodeFormAction(
+							Schema.Struct({ id: Schema.String }),
+							values,
+							values,
+						)
+						if (!decoded.ok)
+							return next({
+								context: {
+									settingsAction: actionResponse(
+										'email',
+										values,
+										decoded.action.response,
+									),
+								},
+							})
+						const result = await performResendVerification(decoded.payload)
+						if (result.ok) throw redirect({ to: '/settings' })
+						return next({
+							context: { settingsAction: actionResponse('email', values, result.error) },
+						})
+					}
+					case 'deleteEmail': {
+						const decoded = decodeFormAction(
+							Schema.Struct({ id: Schema.String }),
+							values,
+							values,
+						)
+						if (!decoded.ok)
+							return next({
+								context: {
+									settingsAction: actionResponse(
+										'email',
+										values,
+										decoded.action.response,
+									),
+								},
+							})
+						const result = await performRemoveEmail(decoded.payload)
+						if (result.ok) throw redirect({ to: '/settings' })
+						return next({
+							context: { settingsAction: actionResponse('email', values, result.error) },
+						})
+					}
+					case 'makePrimary': {
+						const decoded = decodeFormAction(
+							Schema.Struct({ id: Schema.String }),
+							values,
+							values,
+						)
+						if (!decoded.ok)
+							return next({
+								context: {
+									settingsAction: actionResponse(
+										'email',
+										values,
+										decoded.action.response,
+									),
+								},
+							})
+						const result = await performMakeEmailPrimary(decoded.payload)
+						if (result.ok) throw redirect({ to: '/settings' })
+						return next({
+							context: { settingsAction: actionResponse('email', values, result.error) },
+						})
+					}
+					case 'deleteRequest': {
+						const result = await performRequestDeletion()
+						if (result.ok) {
+							return next({
+								context: {
+									settingsAction: actionResponse(
+										'deleteRequest',
+										{},
+										{ formMessages: ['request sent'] },
+									),
+								},
+							})
+						}
+						return next({
+							context: {
+								settingsAction: actionResponse('deleteRequest', {}, result.error),
+							},
+						})
+					}
+					case 'deleteConfirm': {
+						const decoded = decodeFormAction(
+							Schema.Struct({ token: Schema.String }),
+							values,
+							values,
+						)
+						if (!decoded.ok)
+							return next({
+								context: {
+									settingsAction: actionResponse(
+										'deleteConfirm',
+										values,
+										decoded.action.response,
+									),
+								},
+							})
+						const result = await performConfirmDeletion(decoded.payload)
+						if (result.ok && result.data.confirm_account_deletion)
+							throw redirect({ to: '/' })
+						if (!result.ok)
+							return next({
+								context: {
+									settingsAction: actionResponse('deleteConfirm', values, result.error),
+								},
+							})
+						return next({
+							context: {
+								settingsAction: actionResponse('deleteConfirm', values, {
+									formErrors: ['Account deletion was not confirmed'],
+								}),
+							},
+						})
+					}
+					default:
+						return invalidAction('profile')
+				}
+			},
+		},
 	},
 	loader: () => getEmails(),
 	pendingComponent: Pending,
@@ -243,17 +476,26 @@ function Settings() {
 }
 
 function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
-	const [username, setUsername] = useState(currentUser.username)
-	const [name, setName] = useState(currentUser.name ?? '')
-	const [avatarUrl, setAvatarUrl] = useState(currentUser.avatar_url ?? '')
-	const [bio, setBio] = useState('')
-	const [response, setResponse] = useState<FormResult>()
+	const action = Route.useRouteContext().settingsAction
+	const profileAction = action?.type === 'profile' ? action : undefined
+	const [username, setUsername] = useState(
+		profileAction?.values.username ?? currentUser.username,
+	)
+	const [name, setName] = useState(profileAction?.values.name ?? currentUser.name ?? '')
+	const [avatarUrl, setAvatarUrl] = useState(
+		profileAction?.values.avatar_url ?? currentUser.avatar_url ?? '',
+	)
+	const [bio, setBio] = useState(profileAction?.values.bio ?? '')
+	const [response, setResponse] = useState<FormResult | undefined>(
+		profileAction?.response,
+	)
 	const updateProfile = useServerFn(updateProfileFn)
 	const router = useRouter()
 
 	return (
 		<Form
 			prefix="profile"
+			method="post"
 			response={response}
 			onSubmit={async (ev) => {
 				ev.preventDefault()
@@ -278,6 +520,7 @@ function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
 				}
 			}}
 		>
+			<input type="hidden" name="action" value="profile" />
 			<fieldset>
 				<legend>profile settings</legend>
 				<Form.Row
@@ -319,24 +562,27 @@ function ProfileSettings({ currentUser }: { currentUser: AuthUser }) {
 }
 
 function PasswordSettings() {
-	const [oldPassword, setOldPassword] = useState('')
-	const [password, setPassword] = useState('')
-	const [confirmPassword, setConfirmPassword] = useState('')
-	const [response, setResponse] = useState<FormResult>()
+	const action = Route.useRouteContext().settingsAction
+	const passwordAction = action?.type === 'password' ? action : undefined
+	const { passwordUpdated } = Route.useSearch()
+	const [response, setResponse] = useState<FormResult | undefined>(
+		passwordAction?.response ??
+			(passwordUpdated ? { formMessages: ['Password updated'] } : undefined),
+	)
 	const changePassword = useServerFn(changePasswordFn)
 
 	return (
 		<Form
 			prefix="settings"
+			method="post"
 			response={response}
 			onSubmit={async (ev) => {
 				ev.preventDefault()
+				const form = ev.currentTarget
 				setResponse(undefined)
-				const decoded = Schema.decodeUnknownEither(ChangePasswordFormPayload)({
-					oldPassword,
-					newPassword: password,
-					confirmPassword,
-				})
+				const decoded = Schema.decodeUnknownEither(ChangePasswordFormPayload)(
+					Object.fromEntries(new FormData(form).entries()),
+				)
 				if (decoded._tag === 'Left') {
 					setResponse(formResultFromParseError(decoded.left))
 					return
@@ -345,9 +591,7 @@ function PasswordSettings() {
 					data: decoded.right,
 				})
 				if (result.ok) {
-					setOldPassword('')
-					setPassword('')
-					setConfirmPassword('')
+					form.reset()
 					setResponse({ formMessages: ['Password updated'] })
 				} else {
 					setResponse(result.error)
@@ -355,6 +599,7 @@ function PasswordSettings() {
 			}}
 			data-cy="settings-password-form"
 		>
+			<input type="hidden" name="action" value="password" />
 			<fieldset>
 				<legend>password settings</legend>
 
@@ -364,8 +609,7 @@ function PasswordSettings() {
 					type="password"
 					name="oldPassword"
 					autoComplete="current-password"
-					value={oldPassword}
-					onChange={(e) => setOldPassword(e.target.value)}
+					defaultValue={passwordAction?.values.oldPassword ?? ''}
 				/>
 
 				<Form.Row
@@ -374,8 +618,6 @@ function PasswordSettings() {
 					type="password"
 					name="newPassword"
 					autoComplete="new-password"
-					value={password}
-					onChange={(e) => setPassword(e.target.value)}
 				/>
 
 				<Form.Row
@@ -383,8 +625,6 @@ function PasswordSettings() {
 					type="password"
 					name="confirmPassword"
 					autoComplete="new-password"
-					value={confirmPassword}
-					onChange={(e) => setConfirmPassword(e.target.value)}
 				/>
 
 				<div>
@@ -428,12 +668,12 @@ function EmailRow({
 	email: EmailRowData
 	hasOtherEmails: boolean
 }) {
-	const [response, setResponse] = useState<FormResult>()
+	const action = Route.useRouteContext().settingsAction
+	const response =
+		action?.type === 'email' && action.values.id === email.id
+			? action.response
+			: undefined
 	const canDelete = !email.is_primary && hasOtherEmails
-	const resend = useServerFn(resendVerificationFn)
-	const remove = useServerFn(removeEmailFn)
-	const makePrimary = useServerFn(makeEmailPrimaryFn)
-	const router = useRouter()
 
 	return (
 		<li
@@ -457,105 +697,73 @@ function EmailRow({
 				</span>
 				<div>Added {new Date(email.created_at).toLocaleString()}</div>
 			</div>
-			<Form
-				prefix="settings"
-				response={response}
-				onSubmit={async (ev) => {
-					ev.preventDefault()
-					setResponse(undefined)
-					const submitter = (ev.nativeEvent as SubmitEvent).submitter
-					const type =
-						submitter instanceof HTMLButtonElement
-							? submitter.getAttribute('value')
-							: null
-					let result: ActionResult
-					switch (type) {
-						case 'resendValidation':
-							result = await resend({ data: { id: email.id } })
-							break
-						case 'deleteEmail':
-							result = await remove({ data: { id: email.id } })
-							break
-						case 'makePrimary':
-							result = await makePrimary({ data: { id: email.id } })
-							break
-						default:
-							return
-					}
-					if (result.ok) {
-						await router.invalidate()
-					} else {
-						setResponse(result.error)
-					}
-				}}
-			>
-				<Form.Errors />
+			<div>
+				{response?.formErrors?.map((error: string) => (
+					<div className="field-error" key={error}>
+						{error}
+					</div>
+				))}
 				{email.is_primary && (
 					<span className="primary_indicator" data-cy="email-settings-indicator-primary">
 						Primary
 					</span>
 				)}
 				{canDelete && (
-					<button
-						type="submit"
-						name="type"
-						value="deleteEmail"
-						data-cy="email-settings-button-delete"
-					>
-						Delete
-					</button>
+					<form method="post">
+						<input type="hidden" name="action" value="deleteEmail" />
+						<input type="hidden" name="id" value={email.id} />
+						<button type="submit" data-cy="email-settings-button-delete">
+							Delete
+						</button>
+					</form>
 				)}
 				{!email.is_verified && (
-					<button type="submit" name="type" value="resendValidation">
-						Resend verification
-					</button>
+					<form method="post">
+						<input type="hidden" name="action" value="resendVerification" />
+						<input type="hidden" name="id" value={email.id} />
+						<button type="submit">Resend verification</button>
+					</form>
 				)}
 				{email.is_verified && !email.is_primary && (
-					<button
-						type="submit"
-						name="type"
-						value="makePrimary"
-						data-cy="email-settings-button-makeprimary"
-					>
-						Make primary
-					</button>
+					<form method="post">
+						<input type="hidden" name="action" value="makePrimary" />
+						<input type="hidden" name="id" value={email.id} />
+						<button type="submit" data-cy="email-settings-button-makeprimary">
+							Make primary
+						</button>
+					</form>
 				)}
-			</Form>
+			</div>
 		</li>
 	)
 }
 
 function AddEmailForm() {
 	const { showAddEmail } = Route.useSearch()
-	const [showForm, setShowForm] = useState(Boolean(showAddEmail))
-	const [email, setEmail] = useState('')
-	const [response, setResponse] = useState<FormResult>()
+	const action = Route.useRouteContext().settingsAction
+	const addEmailAction = action?.type === 'addEmail' ? action : undefined
+	const [showForm, setShowForm] = useState(
+		Boolean(showAddEmail) || Boolean(addEmailAction),
+	)
+	const [email, setEmail] = useState(addEmailAction?.values.email ?? '')
+	const [response, setResponse] = useState<FormResult | undefined>(
+		addEmailAction?.response,
+	)
 	const addEmail = useServerFn(addEmailFn)
 	const router = useRouter()
 
 	if (!showForm) {
 		return (
-			<form
-				onSubmit={(ev) => {
-					ev.preventDefault()
-					setShowForm(true)
-				}}
-			>
-				<button
-					type="submit"
-					name="showAddEmail"
-					value="1"
-					data-cy="settings-show-add-email-button"
-				>
-					Add email
-				</button>
-			</form>
+			<a href="/settings?showAddEmail=1" data-cy="settings-show-add-email-button">
+				Add email
+			</a>
 		)
 	}
 
 	return (
 		<Form
 			prefix="settings"
+			method="post"
 			response={response}
 			data-cy="settings-email-form"
 			onSubmit={async (ev) => {
@@ -578,6 +786,7 @@ function AddEmailForm() {
 				}
 			}}
 		>
+			<input type="hidden" name="action" value="addEmail" />
 			<Form.Row
 				{...formConstraints['email.addEmail'].email}
 				label="new email"
@@ -596,8 +805,13 @@ function AddEmailForm() {
 }
 
 function DeleteAccount() {
-	const [response, setResponse] = useState<FormResult>()
-	const [requested, setRequested] = useState(false)
+	const action = Route.useRouteContext().settingsAction
+	const deleteRequestAction = action?.type === 'deleteRequest' ? action : undefined
+	const deleteConfirmAction = action?.type === 'deleteConfirm' ? action : undefined
+	const [response, setResponse] = useState<FormResult | undefined>(
+		deleteConfirmAction?.response ?? deleteRequestAction?.response,
+	)
+	const [requested, setRequested] = useState(Boolean(deleteRequestAction))
 	const { delete_token: token } = Route.useSearch()
 	const navigate = useNavigate()
 	const requestDeletion = useServerFn(requestDeletionFn)
@@ -606,6 +820,7 @@ function DeleteAccount() {
 	if (token) {
 		return (
 			<form
+				method="post"
 				onSubmit={async (ev) => {
 					ev.preventDefault()
 					setResponse(undefined)
@@ -617,6 +832,8 @@ function DeleteAccount() {
 					}
 				}}
 			>
+				<input type="hidden" name="action" value="deleteConfirm" />
+				<input type="hidden" name="token" value={token} />
 				<fieldset>
 					<legend>danger zone</legend>
 					<p>
@@ -654,6 +871,7 @@ function DeleteAccount() {
 
 	return (
 		<form
+			method="post"
 			onSubmit={async (ev) => {
 				ev.preventDefault()
 				setResponse(undefined)
@@ -665,6 +883,7 @@ function DeleteAccount() {
 				}
 			}}
 		>
+			<input type="hidden" name="action" value="deleteRequest" />
 			<fieldset>
 				<legend>danger zone</legend>
 				<div>
